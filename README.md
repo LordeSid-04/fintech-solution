@@ -1,6 +1,6 @@
-# Governed Multi-Agent Builder
+# CodexGo: Governed Multi-Agent Builder
 
-## Run from GitHub (Start Here)
+## Run from GitHub
 
 Use this if you are running the project for the first time from the repository.
 
@@ -17,9 +17,7 @@ git clone https://github.com/LordeSid-04/experiment-dlweek.git
 cd experiment-dlweek
 ```
 
-### Judge Quick Start (No OpenAI key required)
-
-The backend automatically falls back to a built-in harness when `OPENAI_API_KEY` is not set, so judges can run the full product flow without entering secrets.
+### Judge Quick Start
 
 ```bash
 copy backend\.env.example backend\.env
@@ -29,7 +27,7 @@ npm run dev
 
 Then open `http://localhost:3000/auth`.
 
-### Full setup (with optional OpenAI key)
+### Full setup
 
 Backend:
 
