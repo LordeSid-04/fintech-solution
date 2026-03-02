@@ -1,21 +1,19 @@
-import { getGovernanceConfig, getMode, snapToClosestBand } from "./governance";
+import { getGovernanceConfig, getMode, clampPercent } from "./governance";
 
 describe("governance helpers", () => {
   it("maps percentage ranges to expected modes", () => {
     expect(getMode(0)).toBe("assist");
-    expect(getMode(25)).toBe("assist");
-    expect(getMode(50)).toBe("pair");
-    expect(getMode(75)).toBe("pair");
-    expect(getMode(76)).toBe("autopilot");
+    expect(getMode(29)).toBe("assist");
+    expect(getMode(30)).toBe("pair");
+    expect(getMode(70)).toBe("pair");
+    expect(getMode(71)).toBe("autopilot");
     expect(getMode(100)).toBe("autopilot");
   });
 
-  it("snaps confidence values to the closest confidence band", () => {
-    expect(snapToClosestBand(0)).toBe(0);
-    expect(snapToClosestBand(24)).toBe(0);
-    expect(snapToClosestBand(26)).toBe(50);
-    expect(snapToClosestBand(73)).toBe(50);
-    expect(snapToClosestBand(90)).toBe(100);
+  it("clamps confidence values to legal range", () => {
+    expect(clampPercent(-4)).toBe(0);
+    expect(clampPercent(55)).toBe(55);
+    expect(clampPercent(200)).toBe(100);
   });
 
   it("returns governance config with required fields", () => {

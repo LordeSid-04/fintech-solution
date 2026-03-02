@@ -24,7 +24,7 @@ export function TerminalDrawer({ logs, showAuditIndicator = true }: TerminalDraw
 
       <div className="flex items-center justify-between">
         <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-white/70">
-          Terminal / Logs
+          Logs
         </h2>
         <div className="flex items-center gap-2">
           {showAuditIndicator ? (

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { snapToClosestBand } from "@/lib/governance";
+import { clampPercent } from "@/lib/governance";
 
 type AppState = {
   selectedProjectId: string;
@@ -12,9 +12,9 @@ type AppState = {
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
-      selectedProjectId: "default-project",
+      selectedProjectId: "new-project",
       confidenceByProject: {
-        "default-project": 50,
+        "new-project": 50,
       },
       setSelectedProjectId: (projectId) =>
         set({
@@ -24,7 +24,7 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           confidenceByProject: {
             ...state.confidenceByProject,
-            [projectId]: snapToClosestBand(percent),
+            [projectId]: clampPercent(percent),
           },
         })),
     }),
@@ -45,18 +45,31 @@ export const useAppStore = create<AppState>()(
           state.confidenceByProject &&
           typeof state.confidenceByProject === "object"
         ) {
+          if (state.selectedProjectId === "default-project") {
+            return {
+              ...state,
+              selectedProjectId: "new-project",
+              confidenceByProject: {
+                ...state.confidenceByProject,
+                "new-project":
+                  state.confidenceByProject["new-project"] ??
+                  state.confidenceByProject["default-project"] ??
+                  50,
+              },
+            };
+          }
           return state;
         }
 
         const legacyConfidence =
           typeof state?.confidencePercent === "number"
-            ? snapToClosestBand(state.confidencePercent)
+            ? clampPercent(state.confidencePercent)
             : 50;
 
         return {
-          selectedProjectId: "default-project",
+          selectedProjectId: "new-project",
           confidenceByProject: {
-            "default-project": legacyConfidence,
+            "new-project": legacyConfidence,
           },
         };
       },

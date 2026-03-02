@@ -21,9 +21,7 @@ export interface GovernanceConfig {
   riskPolicy: "strict_manual" | "review_first" | "traffic_light";
 }
 
-export const CONFIDENCE_BANDS = [0, 50, 100] as const;
-
-function clampPercent(percent: number): number {
+export function clampPercent(percent: number): number {
   if (Number.isNaN(percent)) {
     return 0;
   }
@@ -31,25 +29,12 @@ function clampPercent(percent: number): number {
   return Math.min(100, Math.max(0, Math.round(percent)));
 }
 
-export function snapToClosestBand(percent: number): (typeof CONFIDENCE_BANDS)[number] {
-  const value = clampPercent(percent);
-
-  if (value <= 25) {
-    return 0;
-  }
-  if (value <= 75) {
-    return 50;
-  }
-  return 100;
-}
-
 export function getMode(percent: number): GovernanceMode {
-  const band = snapToClosestBand(percent);
-
-  if (band === 0) {
+  const value = clampPercent(percent);
+  if (value <= 29) {
     return "assist";
   }
-  if (band === 50) {
+  if (value <= 70) {
     return "pair";
   }
   return "autopilot";
@@ -72,7 +57,7 @@ export function getPermissions(mode: GovernanceMode): GovernancePermission[] {
     },
     "Checks (lint/tests/CI)": {
       assist: "gated",
-      pair: "gated",
+      pair: "allowed",
       autopilot: "allowed",
     },
     "PR/Merge": {
@@ -94,10 +79,10 @@ export function getPermissions(mode: GovernanceMode): GovernancePermission[] {
 
   const labels: Record<GovernancePermission["category"], string> = {
     "Suggestions & Planning": "Generate plans, assumptions, and reviewable scope",
-    "Code Changes": "Create and update code diffs in project files",
-    "Checks (lint/tests/CI)": "Execute quality and validation workflows",
-    "PR/Merge": "Open pull requests and request approvals",
-    Deploy: "Trigger deployment pipeline stages",
+    "Code Changes": "Generate and stage code diffs; apply follows confidence gates",
+    "Checks (lint/tests/CI)": "Run verification workflows based on confidence policy",
+    "PR/Merge": "Open PR drafts and progress merge if gates allow",
+    Deploy: "Trigger deployment only when risk and approvals satisfy policy",
     "Protected Actions": "Perform high-risk or restricted operations",
   };
 

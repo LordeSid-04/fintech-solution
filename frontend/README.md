@@ -22,6 +22,19 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+To use the governed backend pipeline:
+
+1. Start backend (`../backend`):
+   ```bash
+   npm install
+   npm start
+   ```
+2. Set frontend env:
+   ```bash
+   NEXT_PUBLIC_BACKEND_URL=http://localhost:4000
+   ```
+3. Run frontend dev server and submit prompts from workspace AI panel.
+
 Additional route:
 
 - `http://localhost:3000/confidence` for the futuristic confidence/permissions layout.
@@ -30,7 +43,18 @@ Additional route:
 - Governance helper hook: `src/lib/use-governance.ts`.
 - Mock agent run generator: `src/lib/mockRun.ts` (timeline feed for workspace panel).
 - Diff viewer highlights risky lines and links to finding popover details in workspace.
-- Confidence slider uses smooth drag with discrete band snapping (`0`, `50`, `100`) mapped to Assist/Pair/Autopilot.
+- Workspace viewer now includes a dedicated `Response` tab (alongside Preview/Editor/Diff/Logs) for readable model output.
+- Response tab renders generated code with in-browser syntax highlighting for a more IDE-authentic review flow.
+- In `Autopilot` (`100% confidence`), the UI now auto-switches to `Response` as soon as streaming starts, and live agent output updates smoothly in real time.
+- Response tab now includes an intent-fit checklist (chatbot/website/dashboard/app) so users can quickly verify the generated output matches the original prompt intent.
+- Timeline now includes Approval history (from backend ledger) with approvers and Break-glass context.
+- Confidence slider snaps to `0`, `50`, `100`; modes map to Assist `0`, Pair `50`, Autopilot `100`.
+- Assist at `0` is companion-only: scoped code-quote help, suggestions/diffs only, and manual Approval-required execution.
+- Assist (`0`) and Pair (`50`) use an IDE-style in-browser editor with syntax highlighting and inline run output.
+- Assist (`0`) companion responses are now local-first and selection-aware (fast think-box in editor; no forced Logs tab jump).
+- TypeScript/TSX run flow transpiles in-browser before execution; Python uses Pyodide sandbox execution.
+- Assist (`0`) now calls a fast backend OpenAI suggestion endpoint and renders a compact in-editor `Suggestions` box.
+- Editor includes a terminal-style output panel that always shows run output (`(no output)` when nothing is emitted).
 - Confidence is stored per selected project from the confidence page project selector.
 - Workspace save flow supports in-app project persistence and optional `.zip` download export.
 
@@ -63,6 +87,8 @@ The CTA click appends an event to local storage using:
 - `approvals`
 
 This implementation is append-only in behavior (new events are appended to prior history).
+
+Backend ledger evidence is also append-only at `backend/data/evidence-ledger.jsonl`.
 
 ## Design System (Landing Page)
 
@@ -106,6 +132,17 @@ Added dependencies:
 - `framer-motion`
 - `zustand`
 - `jszip`
+- `react-syntax-highlighter`
+- `@types/react-syntax-highlighter`
+- `@uiw/react-codemirror`
+- `@codemirror/lang-javascript`
+- `@codemirror/lang-python`
+- `@codemirror/lang-html`
+- `@codemirror/lang-css`
+- `@codemirror/lang-json`
+- `@codemirror/lang-markdown`
+- `@codemirror/lang-yaml`
+- `@codemirror/theme-one-dark`
 
 Reason:
 
@@ -113,6 +150,8 @@ Reason:
 - Needed subtle entrance animations with reduced-motion accessibility controls.
 - Needed global persisted app state for confidence mode selection.
 - Needed client-side ZIP export for project files when users download to device.
+- Needed a browser-side syntax highlighter to render generated code legibly in the new Response tab.
+- Needed a Monaco/CodeMirror-style editor with language-aware highlighting for Assist/Pair coding workflows.
 
 License note:
 
@@ -123,3 +162,5 @@ Minimal alternative considered:
 - Node built-in test runner without additional packages. Rejected because it adds friction for React/DOM-oriented tests and weaker ergonomics for frontend unit coverage.
 - CSS-only keyframe transitions for hero content. Rejected because it is harder to orchestrate staggered entrance timing while cleanly honoring reduced-motion preferences.
 - Manual blob export as plain JSON. Rejected because requirement is archive export with project file paths preserved.
+- Hand-rolled regex token coloring. Rejected because it is less accurate and less maintainable than a purpose-built syntax highlighter.
+- Kept plain `<textarea>` editor. Rejected because it does not provide IDE-like language tooling or scalable syntax experience.

@@ -1,74 +1,92 @@
-# Backend SDLC Control Plane
+# Backend Control Plane
 
-This service implements a human-governed multi-agent SDLC pipeline:
+This backend implements a human-governed, multi-agent SDLC pipeline:
 
-`ARCHITECT -> DEVELOPER -> VERIFIER -> OPERATOR -> GOVERNOR`
+- `ARCHITECT` -> plan artifact
+- `DEVELOPER` -> unified diff artifact
+- `VERIFIER` -> test artifact
+- `OPERATOR` -> rollout/rollback artifact
+- `GOVERNOR` -> scanner findings, Risk Score, Risk Tier, and Gate Decision
 
-The orchestrator runs these stages sequentially and records:
+## Codex Proof Metadata
 
-- Codex proof metadata for each model call (`provider`, `model`, `responseId`, `timestamp`, `invokedBy`)
-- scanner findings (line-level evidence)
-- risk score + policy gate decisions
-- append-only audit ledger events with diff/test hashes and approvals
+Every Codex/OpenAI invocation records proof metadata:
+
+- provider (`openai-api` or fallback `codex-harness`)
+- model
+- response/run id
+- timestamp
+- invoking agent role
+
+Proof metadata is returned in API responses and can be shown in a frontend timeline Proof panel.
+
+## Governance and Safety
+
+- Rule-based scanners:
+  - secret pattern scanning
+  - dangerous diff detector:
+    - `DROP TABLE`
+    - `DELETE FROM` without `WHERE`
+    - auth bypass patterns
+    - wildcard IAM permissions
+    - logging headers/cookies/tokens
+- Additional scanners for:
+  - intent drift (`INTENT-DRIFT-001`) when declared low-risk intent touches high-risk paths
+  - trust-boundary changes (`BOUNDARY-*`) like dynamic execution and new network egress
+  - policy drift (`POLICY-*`) when governance checks are removed from diffs
+- Explainable risk engine computes:
+  - `impact` (path/data blast radius)
+  - `exploitability` (finding severity and count)
+  - `uncertainty` (confidence vs evidence mismatch)
+  - `governanceGap` (missing approvals / weak break-glass metadata)
+- Governor emits a `riskCard` with top risk drivers and required controls for human review.
+- Policy gate enforces two-person Approval for high Risk Tier
+- Break-glass support requires reason, expiry, and post-action review flag
+- High/Critical paths are explicitly human-governed: Gate Decision returns `approvalsNeeded` and `control_required` events.
+- Confidence mode from frontend (`assist` / `pair` / `autopilot`) is treated as authoritative in gate evaluation.
+- Mode-aware gate policy:
+  - Assist: all changes require Approval
+  - Pair: low ALLOWED, medium NEEDS_APPROVAL, high/critical BLOCKED
+  - Autopilot: low/medium ALLOWED, high NEEDS_APPROVAL, critical BLOCKED unless Break-glass override
+- Append-only audit ledger (`backend/data/evidence-ledger.jsonl`) logs:
+  - `timestamp, actor, agentRole, actionType, resourcesTouched, diffHash, testHashes, approvals`
+  - tamper-evidence fields: `schemaVersion, prevEventHash, eventHash, scannerSummaryHash, riskCardHash`
+- Developer output includes prompt-grounding checks for build requests to reduce intent drift (for example, avoiding unrelated template substitutions).
+- Developer build generation now applies stronger quality gates for website prompts (company-name grounding, anti-template checks, and multi-file completeness heuristics).
+- At `autopilot` (`100% confidence`), company-website prompts also use a premium quality rubric with deterministic high-quality fallback scaffolding to avoid low-quality template drift.
+- Autopilot fallback generation is intent-aware (for example, chatbot prompts produce chatbot UI scaffolds instead of generic website templates).
 
 ## Run
 
 ```bash
-npm install
-npm run dev
+cd backend
+copy .env.example .env
+# then paste your real OPENAI_API_KEY in .env
+npm test
+npm start
 ```
 
-Default server URL: `http://localhost:4000`
+API runs on `http://localhost:4000` by default.
 
-## Endpoints
+The server auto-loads `backend/.env` on startup (without external dependencies).
 
-- `GET /api/health`
+### Main Endpoints
+
+- `GET /health`
 - `POST /api/orchestrator/run`
+- `POST /api/orchestrator/stream` (NDJSON streaming events for real-time agent output)
+- `GET /api/ledger/events`
 
-Example request body:
+### Demo Flow (Judge Friendly)
 
-```json
-{
-  "request": "Implement secure API patch for workspace save",
-  "actor": "siddh",
-  "approvals": [
-    { "approverId": "alice", "approvedAt": "2026-03-02T10:00:00.000Z" },
-    { "approverId": "bob", "approvedAt": "2026-03-02T10:01:00.000Z" }
-  ]
-}
-```
+1. Run a safe prompt in `pair` mode and show Gate Decision `ALLOWED` or `NEEDS_APPROVAL`.
+2. Run an unsafe prompt that introduces dangerous SQL or auth bypass and show scanner findings with Gate Decision `BLOCKED`.
+3. Show `control_required` events, `approvalsNeeded`, Risk Tier, and Risk Score to demonstrate explicit human-in-the-loop governance.
+4. Open recent ledger events to show append-only, hash-linked evidence entries.
 
-## Security Checks Included
+## Frontend Link
 
-- Secret pattern scanning (OpenAI-style and AWS key patterns)
-- Dangerous diff detector:
-  - `DROP TABLE`
-  - `DELETE FROM` without `WHERE`
-  - auth disable/bypass patterns
-  - wildcard IAM-like permissions
-  - logging headers/cookies/tokens
+Frontend should call:
 
-## Dependency Review
-
-Added backend dependencies:
-
-- `openai`
-- `typescript`
-- `tsx`
-- `vitest`
-
-Reason:
-
-- `openai` is required to call Codex through OpenAI API.
-- `typescript` and `tsx` provide typed implementation and local execution.
-- `vitest` provides lightweight unit tests for risk/policy/orchestrator behavior.
-
-License note:
-
-- These packages are generally permissive-license packages (commonly MIT-style). Confirm exact legal acceptance before production.
-
-Minimal alternatives considered:
-
-- Raw HTTP calls without SDK for OpenAI API; rejected for weaker ergonomics and proof metadata handling.
-- Plain JavaScript without TypeScript; rejected because typed artifacts/ledger schema are a core requirement.
-- Node built-in test runner; possible, but rejected for consistency with existing frontend Vitest setup.
+- `NEXT_PUBLIC_BACKEND_URL=http://localhost:4000`
+- `POST /api/orchestrator/run` with `{ prompt, actor, approvals, breakGlass, confidenceMode, confidencePercent }`

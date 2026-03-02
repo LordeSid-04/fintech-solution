@@ -31,11 +31,11 @@ export function TopBar({
             onClick={onOpenPermissions}
             className="rounded-full border border-white/20 bg-white/[0.03] px-3 py-1 text-xs font-medium text-white/85 transition hover:bg-white/[0.08]"
           >
-            Permissions
+            Access
           </button>
           <div className="inline-flex items-center gap-1.5 rounded-full border border-violet-400/35 bg-violet-400/15 px-3 py-1 text-xs font-medium text-violet-200">
             <ShieldCheck className="h-3.5 w-3.5" />
-            Audit Recording: ON
+            Audit: ON
           </div>
         </div>
       </div>

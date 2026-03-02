@@ -4,8 +4,12 @@ import { useMemo, useSyncExternalStore } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { ConfidenceSlider } from "@/components/ui/ConfidenceSlider";
+import { hasStoredSession } from "@/lib/auth";
 import { getGovernanceConfig } from "@/lib/governance";
+import { fetchProjectsForActiveUser, type StoredProject } from "@/lib/projects";
 import { useGovernance } from "@/lib/use-governance";
 
 const modeColorMap = {
@@ -16,18 +20,19 @@ const modeColorMap = {
 
 const riskRulesByMode = {
   assist: [
-    "Blocks always when risk is detected.",
-    "Human applies patches manually after review.",
+    "AI suggests changes only. It cannot apply, merge, or deploy.",
+    "Humans run every action.",
+    "All changes require approval.",
   ],
   pair: [
-    "Blocks high-risk changes by default.",
-    "Requires expanding risk highlights before approve.",
-    "Approval checkpoints remain mandatory.",
+    "Low risk can proceed. Medium risk needs approval.",
+    "High and critical risk are blocked.",
+    "PR drafts are allowed with review checks.",
   ],
   autopilot: [
-    "Uses traffic-light logic: green / yellow / red.",
-    "Auto-progress is allowed only when safety signals are green.",
-    "Yellow and red paths require additional checks or human stop-gates.",
+    "Low and medium risk can auto-run.",
+    "High risk needs approval. Critical risk is blocked.",
+    "Critical can proceed only with a justified break-glass override.",
   ],
 } as const;
 
@@ -45,21 +50,21 @@ const stateStyleMap = {
 
 const previewByMode = {
   assist: {
-    subtitle: "Editor dominant, compact AI panel",
+    subtitle: "Editor first, smaller AI panel",
     editorWidth: "72%",
     aiWidth: "28%",
     showDiff: false,
     showWorkflow: false,
   },
   pair: {
-    subtitle: "AI panel prominent, diff tab visible",
+    subtitle: "Balanced editor and AI panel",
     editorWidth: "56%",
     aiWidth: "44%",
     showDiff: true,
     showWorkflow: false,
   },
   autopilot: {
-    subtitle: "Wider AI panel with workflow stepper",
+    subtitle: "Larger AI panel with workflow",
     editorWidth: "40%",
     aiWidth: "60%",
     showDiff: true,
@@ -106,6 +111,9 @@ function getPersistedProjectsSnapshot(): RawProject[] {
 }
 
 export default function ConfidencePage() {
+  const router = useRouter();
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [remoteProjects, setRemoteProjects] = useState<StoredProject[] | null>(null);
   const {
     selectedProjectId,
     setSelectedProjectId,
@@ -124,11 +132,12 @@ export default function ConfidencePage() {
     getPersistedProjectsSnapshot,
     () => EMPTY_PROJECTS
   );
+  const effectiveProjects = remoteProjects ?? persistedProjects;
   const savedProjects = useMemo(() => {
-    const seenIds = new Set<string>(["default-project"]);
+    const seenIds = new Set<string>(["new-project"]);
     const normalizedProjects: SavedProject[] = [];
 
-    persistedProjects.forEach((project) => {
+    effectiveProjects.forEach((project) => {
       const baseId = project.id ?? `project-${project.savedAt}`;
       let uniqueId = baseId;
       let suffix = 1;
@@ -145,15 +154,37 @@ export default function ConfidencePage() {
       });
     });
 
-    return [
-      { id: "default-project", name: "Current Draft", savedAt: "" },
-      ...normalizedProjects,
-    ] as SavedProject[];
-  }, [persistedProjects]);
+    return normalizedProjects as SavedProject[];
+  }, [effectiveProjects]);
 
   const activeProjectId = savedProjects.some((project) => project.id === selectedProjectId)
     ? selectedProjectId
-    : "default-project";
+    : "new-project";
+
+  useEffect(() => {
+    if (!hasStoredSession()) {
+      router.replace("/auth");
+      return;
+    }
+    setSessionChecked(true);
+  }, [router]);
+
+  useEffect(() => {
+    if (!sessionChecked) return;
+    const syncProjects = async () => {
+      try {
+        const projects = await fetchProjectsForActiveUser();
+        setRemoteProjects(projects);
+      } catch {
+        setRemoteProjects(null);
+      }
+    };
+    void syncProjects();
+  }, [sessionChecked]);
+
+  if (!sessionChecked) {
+    return null;
+  }
 
   return (
     <main className="confidence-shell relative min-h-screen overflow-hidden bg-black text-white">
@@ -187,7 +218,7 @@ export default function ConfidencePage() {
               </p>
               <h1 className="mt-3 text-2xl font-semibold text-white">Control Autonomy</h1>
               <p className="mt-2 text-sm text-white/80">
-                Set how autonomous Codex can be for the current workflow.
+                Choose how much Codex can do for this project.
               </p>
 
               <div className="mt-6">
@@ -202,21 +233,44 @@ export default function ConfidencePage() {
                   Project
                 </p>
                 <p className="mt-1 text-xs text-white/65">
-                  Confidence settings are saved per selected project.
+                  Confidence is saved per project.
                 </p>
-                <select
-                  value={activeProjectId}
-                  onChange={(event) => setSelectedProjectId(event.target.value)}
-                  className="mt-3 w-full rounded-lg border border-white/15 bg-black/35 px-3 py-2 text-sm text-white outline-none"
+                <button
+                  type="button"
+                  onClick={() => setSelectedProjectId("new-project")}
+                  className={`mt-3 w-full rounded-lg border px-3 py-2 text-left text-sm outline-none ${
+                    activeProjectId === "new-project"
+                      ? "border-violet-300/35 bg-violet-300/12 text-violet-100"
+                      : "border-white/15 bg-black/35 text-white/80 hover:bg-white/[0.06]"
+                  }`}
                 >
-                  {savedProjects.map((project) => (
-                    <option key={project.id} value={project.id} className="bg-[#090611]">
-                      {project.savedAt
-                        ? `${project.name} (${new Date(project.savedAt).toLocaleString()})`
-                        : project.name}
+                  Start New Project
+                </button>
+                <div className="mt-3">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-white/60">
+                    Continue Existing Project
+                  </p>
+                  <select
+                    value={activeProjectId === "new-project" ? "" : activeProjectId}
+                    onChange={(event) => {
+                      if (event.target.value) {
+                        setSelectedProjectId(event.target.value);
+                      }
+                    }}
+                    className="mt-2 w-full rounded-lg border border-white/15 bg-black/35 px-3 py-2 text-sm text-white outline-none"
+                  >
+                    <option value="" className="bg-[#090611]">
+                      Select a project...
                     </option>
-                  ))}
-                </select>
+                    {savedProjects.map((project) => (
+                      <option key={project.id} value={project.id} className="bg-[#090611]">
+                        {project.savedAt
+                          ? `${project.name} (${new Date(project.savedAt).toLocaleString()})`
+                          : project.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -241,7 +295,7 @@ export default function ConfidencePage() {
 
                 <div className="rounded-xl border border-white/12 bg-white/[0.02] p-4">
                   <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-white/80">
-                    When risk is found
+                    Risk behavior
                   </h3>
                   <ul className="mt-3 space-y-2 text-sm text-white/82">
                     {riskRulesByMode[mode].map((rule) => (
@@ -252,20 +306,20 @@ export default function ConfidencePage() {
                   {mode === "autopilot" ? (
                     <div className="mt-4 rounded-lg border border-white/10 bg-black/30 p-3">
                       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/70">
-                        Traffic light legend
+                        Color guide
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-white/75">
                         <span className="inline-flex items-center gap-1.5">
                           <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
-                          Green: safe auto-progress
+                          Green: auto-run
                         </span>
                         <span className="inline-flex items-center gap-1.5">
                           <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
-                          Yellow: checkpoint required
+                          Yellow: review needed
                         </span>
                         <span className="inline-flex items-center gap-1.5">
                           <span className="h-2.5 w-2.5 rounded-full bg-rose-300" />
-                          Red: block and escalate
+                          Red: blocked
                         </span>
                       </div>
                     </div>
@@ -287,7 +341,7 @@ export default function ConfidencePage() {
           <div className="rounded-2xl border border-white/12 bg-white/[0.02] p-5 backdrop-blur-sm">
             <h2 className="text-lg font-semibold text-white">Permissions</h2>
             <p className="mt-2 text-sm text-white/75">
-              Governance matrix for the selected confidence mode.
+              Permissions for the selected mode.
             </p>
 
             <div className="relative mt-4 overflow-hidden rounded-xl border border-white/10 bg-[linear-gradient(to_right,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:28px_28px] p-2">
@@ -374,6 +428,7 @@ export default function ConfidencePage() {
 
           </div>
         </section>
+
       </div>
     </main>
   );

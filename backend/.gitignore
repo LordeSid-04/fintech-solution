@@ -1,0 +1,4 @@
+.env
+data/*.jsonl
+data/users.json
+data/projects.json

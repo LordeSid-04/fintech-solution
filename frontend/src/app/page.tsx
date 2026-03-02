@@ -18,12 +18,14 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SecurityShowcase } from "@/components/shared/SecurityShowcase";
 import { Container } from "@/components/ui/Container";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { PillButton } from "@/components/ui/PillButton";
 import { Section } from "@/components/ui/Section";
 import { spacing, typography } from "@/lib/design-system";
 import { getHeroMotion } from "@/lib/hero-motion";
+import { useGovernance } from "@/lib/use-governance";
 
 const montserrat = Montserrat({
   subsets: ["latin"],
@@ -41,36 +43,36 @@ const howPipelineSteps = [
   {
     title: "Planner Agent",
     description:
-      "Turns your request into a clear, reviewable plan with scope and assumptions.",
+      "Turns your request into a clear plan.",
     icon: ClipboardList,
   },
   {
     title: "Builder Agent",
-    description: "Generates a proposed change set (diff), not a blind deployment.",
+    description: "Generates a proposed diff. No blind deploys.",
     icon: Sparkles,
   },
   {
     title: "Security Scanner",
     description:
-      "Detects risky patterns: secrets, injections, unsafe dependencies, insecure calls.",
+      "Finds risky patterns like secrets, unsafe SQL, and token logging.",
     icon: ShieldCheck,
   },
   {
     title: "Risk Engine",
     description:
-      "Scores impact and determines the required governance path.",
+      "Scores risk and picks the right control path.",
     icon: TriangleAlert,
   },
   {
     title: "Human Gate (when needed)",
     description:
-      "Approves, rejects, or requests edits with full traceability.",
+      "Humans approve, reject, or request changes.",
     icon: BadgeCheck,
   },
   {
     title: "Deployer Agent",
     description:
-      "Applies changes only after safety + policy conditions are satisfied.",
+      "Applies changes only after all checks pass.",
     icon: Rocket,
   },
 ] as const;
@@ -79,37 +81,37 @@ const featureCards = [
   {
     title: "Confidence Modes",
     description:
-      "From assisted coding to full autopilot — adjustable per task.",
+      "From assistant to autopilot, per task.",
     icon: Gauge,
   },
   {
     title: "Agent Orchestration",
     description:
-      "Planner, Builder, Auditor, Deployer working in a controlled workflow.",
+      "Planner, Builder, Verifier, and Operator in one flow.",
     icon: Workflow,
   },
   {
     title: "Security Scanner",
     description:
-      "Automatic checks for common vulnerabilities and unsafe code patterns.",
+      "Automatic checks for common unsafe patterns.",
     icon: ShieldCheck,
   },
   {
     title: "Risk Engine & Policy Gates",
     description:
-      "Risk scoring that routes changes to auto-approve, review, or block.",
+      "Routes changes to allow, review, or block.",
     icon: Radar,
   },
   {
     title: "Audit Logs & Traceability",
     description:
-      "A readable history of prompts, diffs, decisions, and approvals.",
+      "Clear history of prompts, diffs, and approvals.",
     icon: FileClock,
   },
   {
     title: "Enterprise-ready Controls",
     description:
-      "Role-based approvals, protected actions, and fail-safe intervention.",
+      "Role-based approvals and safe overrides.",
     icon: LockKeyhole,
   },
 ] as const;
@@ -118,22 +120,23 @@ const faqItems = [
   {
     question: "Can Codex push changes without review?",
     answer:
-      "No. High-risk actions are routed to human approval with policy checks before any deploy action can proceed.",
+      "No. High-risk actions require human approval before deploy.",
   },
   {
     question: "How do we track what the agents changed?",
     answer:
-      "Every step records prompts, diffs, scan outcomes, risk decisions, and approval events in an auditable trail.",
+      "Every step logs prompts, diffs, risk results, and approvals.",
   },
   {
     question: "What happens when security or risk checks fail?",
     answer:
-      "The pipeline blocks progression, surfaces reasons, and requires edits or explicit governance actions before retrying.",
+      "The pipeline blocks the run, shows reasons, and asks for fixes or approvals.",
   },
 ] as const;
 
 export default function Home() {
   const router = useRouter();
+  const { mode } = useGovernance();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const missionSectionRef = useRef<HTMLElement>(null);
   const [activeSection, setActiveSection] = useState<string>("product");
@@ -281,7 +284,7 @@ export default function Home() {
       <div
         className="absolute inset-0 z-0 bg-center bg-no-repeat opacity-50"
         style={{
-          backgroundImage: "url('/bg4.gif')",
+          backgroundImage: shouldReduceMotion ? "none" : "url('/bg4.gif')",
           backgroundSize: "95% auto",
         }}
       />
@@ -323,11 +326,8 @@ export default function Home() {
             ))}
           </nav>
           <div className="flex items-center gap-3">
-            <PillButton variant="outline" size="sm" className="border-white/30">
-              Enterprise
-            </PillButton>
-            <PillButton variant="primary" size="sm">
-              Login
+            <PillButton variant="primary" size="sm" onClick={() => router.push("/auth")}>
+              Login / Sign up
             </PillButton>
           </div>
         </Container>
@@ -337,20 +337,19 @@ export default function Home() {
             {...getHeroMotion(shouldReduceMotion, 0.05, 8)}
             className={`mb-10 ${typography.eyebrow}`}
           >
-            BUILD A NO-CODE AI APP IN MINUTES
+            GOVERNED AI ENGINEERING
           </motion.p>
           <motion.h1
             {...getHeroMotion(shouldReduceMotion, 0.15)}
             className={`${montserrat.className} ${typography.hero} max-w-3xl text-white`}
           >
-            A new way to think and create with computers
+            Build faster, stay in control
           </motion.h1>
           <motion.p
             {...getHeroMotion(shouldReduceMotion, 0.28, 10)}
             className={`mt-3 max-w-2xl ${typography.body}`}
           >
-            Design, prototype, and ship polished digital products with an intuitive
-            workflow built for creators and teams.
+            Build, review, and ship with AI speed and human oversight.
           </motion.p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <PillButton
@@ -384,18 +383,16 @@ export default function Home() {
               <GlassCard className="w-full">
                 <p className={`${typography.eyebrow}`}>Product</p>
                 <h2 className={`${typography.h2} mt-4 text-white`}>
-                  AI that accelerates teams — without bypassing governance.
+                  AI speed with governance built in.
                 </h2>
                 <p className={`mt-5 max-w-2xl ${typography.body}`}>
-                  Our platform turns Codex into a governed coding agent that
-                  supports every stage of the SDLC. You decide how autonomous it
-                  can be, while security scanning and risk scoring ensure changes
-                  are safe before they ever reach implementation.
+                  Codex helps across the SDLC. You set autonomy. Scanners and risk
+                  checks keep unsafe changes from shipping.
                 </p>
                 <ul className="mt-6 space-y-3 text-sm text-white/85">
                   <li>Confidence Scale controls how much Codex can do</li>
-                  <li>Multi-agent workflow (Plan → Build → Review)</li>
-                  <li>Built-in safety gates (Scan + Risk) before deploy</li>
+                  <li>Multi-agent workflow (Plan → Build → Verify)</li>
+                  <li>Safety gates (Scan + Risk) before deploy</li>
                 </ul>
               </GlassCard>
             </motion.div>
@@ -437,13 +434,13 @@ export default function Home() {
                 <GlassCard className="w-full">
                   <h3 className="text-base font-semibold text-white">Speed</h3>
                   <p className="mt-2 text-sm text-white/82">
-                    Faster delivery with guided autonomy and reusable agent steps.
+                    Faster delivery with guided autonomy.
                   </p>
                 </GlassCard>
                 <GlassCard className="w-full">
                   <h3 className="text-base font-semibold text-white">Governance</h3>
                   <p className="mt-2 text-sm text-white/82">
-                    Human approvals and role boundaries stay enforced by default.
+                    Human approvals and role boundaries stay on by default.
                   </p>
                 </GlassCard>
               </div>
@@ -451,8 +448,7 @@ export default function Home() {
               <GlassCard className="w-full">
                 <h3 className="text-base font-semibold text-white">Safety</h3>
                 <p className="mt-2 text-sm text-white/82">
-                  Integrated scan + risk checks block dangerous changes before
-                  implementation and deploy.
+                  Scan + risk checks block dangerous changes before deploy.
                 </p>
               </GlassCard>
             </motion.div>
@@ -471,7 +467,7 @@ export default function Home() {
               <GlassCard className="w-full">
                 <p className={`${typography.eyebrow}`}>How it works</p>
                 <h2 className={`${typography.h2} mt-4 text-white`}>
-                  A structured pipeline that prevents &quot;AI did something catastrophic&quot; moments.
+                  A pipeline built to prevent catastrophic AI changes.
                 </h2>
 
                 <div className="relative mt-8 overflow-hidden pb-2">
@@ -517,7 +513,7 @@ export default function Home() {
                 </motion.div>
 
                 <p className="mt-6 text-sm text-white/80">
-                  Every action is logged. Every risky step is stoppable.
+                  Every action is logged. Any risky step can be stopped.
                 </p>
               </GlassCard>
             </motion.div>
@@ -586,8 +582,9 @@ export default function Home() {
                 </div>
 
                 <p className="mt-7 text-sm text-white/80">
-                  Governance isn&apos;t a slowdown — it&apos;s how you scale safely.
+                  Governance helps teams scale safely.
                 </p>
+                <SecurityShowcase mode={mode} compact />
               </GlassCard>
             </motion.div>
           </div>
@@ -615,11 +612,9 @@ export default function Home() {
                 Make AI speed trustworthy.
               </h2>
               <p className={`mt-6 max-w-3xl ${typography.body}`}>
-                AI will write more code than ever before — but enterprises still
-                need accountability. Our mission is to build systems where
-                automation is powerful, transparent, and governed: humans stay in
-                control, risks are measurable, and deployment is never a leap of
-                faith.
+                AI writes more code every day. Teams still need accountability.
+                Keep humans in control, make risk measurable, and make every
+                deploy explainable.
               </p>
               <p className="mt-7 text-sm font-medium text-white/85">
                 Safe autonomy is the future of engineering.

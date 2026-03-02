@@ -1,36 +1,53 @@
-import { useRef, useState } from "react";
-import { snapToClosestBand } from "@/lib/governance";
+import { useState } from "react";
+import { clampPercent } from "@/lib/governance";
 
 type ConfidenceSliderProps = {
   value: number;
   onChange: (nextValue: number) => void;
 };
 
-const ticks = [0, 50, 100] as const;
+const snapPoints = [0, 50, 100] as const;
 
-function getNextBand(startValue: number, endValue: number) {
-  if (endValue === startValue) {
-    return snapToClosestBand(startValue);
-  }
-
-  const direction = endValue > startValue ? 1 : -1;
+function snapToDirection(
+  value: number,
+  direction: -1 | 0 | 1
+): (typeof snapPoints)[number] {
   if (direction > 0) {
-    return endValue <= 50 ? 50 : 100;
+    for (const point of snapPoints) {
+      if (point >= value) {
+        return point;
+      }
+    }
+    return 100;
   }
-  return endValue >= 50 ? 50 : 0;
+
+  if (direction < 0) {
+    for (let index = snapPoints.length - 1; index >= 0; index -= 1) {
+      const point = snapPoints[index];
+      if (point <= value) {
+        return point;
+      }
+    }
+    return 0;
+  }
+
+  return snapPoints.reduce<(typeof snapPoints)[number]>((closest, point) => {
+    const currentDistance = Math.abs(point - value);
+    const closestDistance = Math.abs(closest - value);
+    return currentDistance < closestDistance ? point : closest;
+  }, snapPoints[0]);
 }
 
 export function ConfidenceSlider({ value, onChange }: ConfidenceSliderProps) {
   const [draftValue, setDraftValue] = useState<number | null>(null);
-  const dragStartValueRef = useRef(value);
-  const isDraggingRef = useRef(false);
+  const [lastDirection, setLastDirection] = useState<-1 | 0 | 1>(0);
   const currentValue = draftValue ?? value;
 
   const handleCommit = () => {
-    const snapped = getNextBand(dragStartValueRef.current, currentValue);
-    isDraggingRef.current = false;
+    const next = snapToDirection(clampPercent(currentValue), lastDirection);
     setDraftValue(null);
-    onChange(snapped);
+    setLastDirection(0);
+    onChange(next);
   };
 
   return (
@@ -53,28 +70,17 @@ export function ConfidenceSlider({ value, onChange }: ConfidenceSliderProps) {
         min={0}
         max={100}
         value={currentValue}
-        onMouseDown={() => {
-          dragStartValueRef.current = value;
-          isDraggingRef.current = true;
-          setDraftValue(value);
-        }}
-        onTouchStart={() => {
-          dragStartValueRef.current = value;
-          isDraggingRef.current = true;
-          setDraftValue(value);
-        }}
         onChange={(event) => {
-          setDraftValue(Number(event.target.value));
+          const nextValue = Number(event.target.value);
+          const previousValue = draftValue ?? value;
+          setLastDirection(nextValue > previousValue ? 1 : nextValue < previousValue ? -1 : 0);
+          setDraftValue(nextValue);
         }}
         onMouseUp={handleCommit}
         onTouchEnd={handleCommit}
         onBlur={handleCommit}
         onKeyUp={(event) => {
           if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-            if (!isDraggingRef.current) {
-              dragStartValueRef.current = value;
-              isDraggingRef.current = true;
-            }
             handleCommit();
           }
         }}
@@ -82,14 +88,14 @@ export function ConfidenceSlider({ value, onChange }: ConfidenceSliderProps) {
       />
 
       <div className="relative mt-3 h-6">
-        {ticks.map((tick) => (
+        {snapPoints.map((tick) => (
           <div
             key={tick}
             className="absolute top-0 h-1 w-1 -translate-x-1/2 rounded-full bg-white/40"
             style={{ left: `${tick}%` }}
           />
         ))}
-        {ticks.map((tick) => (
+        {snapPoints.map((tick) => (
           <span
             key={`label-${tick}`}
             className="absolute top-2 -translate-x-1/2 text-[10px] text-white/65"
@@ -98,6 +104,11 @@ export function ConfidenceSlider({ value, onChange }: ConfidenceSliderProps) {
             {tick}
           </span>
         ))}
+      </div>
+      <div className="mt-1 grid grid-cols-3 gap-2 text-[10px] text-white/60">
+        <span>Assist (0)</span>
+        <span className="text-center">Pair (50)</span>
+        <span className="text-right">Autopilot (100)</span>
       </div>
     </div>
   );

@@ -51,13 +51,21 @@ export function EditorDiffTabs({
 
       {tab === "editor" ? (
         <div className="min-h-[300px] rounded-lg border border-white/10 bg-black/35 p-3">
-          <p className="text-xs text-white/55">{selectedFile}</p>
-          <textarea
-            value={fileContent}
-            onChange={(event) => onFileContentChange(event.target.value)}
-            placeholder="Type code or notes here..."
-            className="mt-3 min-h-[260px] w-full rounded-md border border-white/12 bg-black/45 p-3 font-mono text-sm text-white/85 outline-none placeholder:text-white/35"
-          />
+          {selectedFile ? (
+            <>
+              <p className="text-xs text-white/55">{selectedFile}</p>
+              <textarea
+                value={fileContent}
+                onChange={(event) => onFileContentChange(event.target.value)}
+                placeholder="Type code or notes here..."
+                className="mt-3 min-h-[260px] w-full rounded-md border border-white/12 bg-black/45 p-3 font-mono text-sm text-white/85 outline-none placeholder:text-white/35"
+              />
+            </>
+          ) : (
+            <p className="text-sm text-white/65">
+              Run a prompt in the AI panel to generate files before editing.
+            </p>
+          )}
         </div>
       ) : (
         <DiffViewer diffLines={diffLines} findings={findings} />

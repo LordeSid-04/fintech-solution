@@ -268,6 +268,32 @@ The practical outcome is a workflow that can move quickly on low-risk work, esca
 - `frontend/` - Next.js app (confidence page + workspace UI)
 - `backend/` - Node.js orchestration server (agents, policy, risk, scanners, ledger)
 
+## Authentication (NTU Student Pilot)
+
+- A lightweight auth flow is available at `frontend/src/app/auth/page.tsx`.
+- Signup requires:
+  - first name,
+  - last name,
+  - email ending with `@e.ntu.edu.sg`,
+  - Singapore mobile number (`+65` or 8-digit local format),
+  - password (minimum 8 chars).
+- Backend auth APIs:
+  - `POST /api/auth/signup`
+  - `POST /api/auth/login`
+- User records are stored in `backend/data/users.json` (initialized empty on first run).
+- Signup/login actions append audit events to the evidence ledger.
+
+## Project Persistence Across Sessions
+
+- Projects are now persisted per authenticated user in `backend/data/projects.json`.
+- Backend project APIs:
+  - `GET /api/projects?email=<user-email>`
+  - `POST /api/projects/save`
+- Frontend sync behavior:
+  - `confidence` view loads saved projects for the logged-in user,
+  - `workspace` save action writes locally and syncs to backend,
+  - future logins for the same user restore project list and files.
+
 ## Core Product Flow
 
 1. User picks a confidence value using a snapping slider (`0`, `50`, or `100`) on the confidence page.
