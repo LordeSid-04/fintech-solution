@@ -201,7 +201,7 @@ export default function ConfidencePage() {
               Back
             </Link>
             <div className="text-sm font-semibold tracking-[0.2em] text-white/85">
-              CODEX AI
+              CodexGo
             </div>
           </div>
           <div className="inline-flex items-center gap-2 rounded-full border border-violet-400/35 bg-violet-400/15 px-3 py-1 text-xs font-medium text-violet-200">
@@ -218,7 +218,7 @@ export default function ConfidencePage() {
               </p>
               <h1 className="mt-3 text-2xl font-semibold text-white">Control Autonomy</h1>
               <p className="mt-2 text-sm text-white/80">
-                Choose how much Codex can do for this project.
+                Choose how much CodexGo can do for this project.
               </p>
 
               <div className="mt-6">

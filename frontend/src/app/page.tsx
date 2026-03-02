@@ -118,7 +118,7 @@ const featureCards = [
 
 const faqItems = [
   {
-    question: "Can Codex push changes without review?",
+    question: "Can CodexGo push changes without review?",
     answer:
       "No. High-risk actions require human approval before deploy.",
   },
@@ -296,7 +296,7 @@ export default function Home() {
         className="scroll-shell relative z-10 h-screen overflow-y-auto"
       >
         <Container className="stable-nav sticky top-0 z-20 flex items-center justify-between rounded-2xl border border-white/12 bg-black/25 py-4 backdrop-blur-md">
-          <div className="text-sm font-medium tracking-wide text-white/85">codex ai</div>
+          <div className="text-sm font-medium tracking-wide text-white/85">CodexGo</div>
           <nav className="hidden items-center gap-1 rounded-full border border-white/20 bg-black/20 px-3 py-2 text-sm text-white/80 backdrop-blur-md md:flex">
             {navSections.map((section) => (
               <button
@@ -386,11 +386,11 @@ export default function Home() {
                   AI speed with governance built in.
                 </h2>
                 <p className={`mt-5 max-w-2xl ${typography.body}`}>
-                  Codex helps across the SDLC. You set autonomy. Scanners and risk
+                  CodexGo helps across the SDLC. You set autonomy. Scanners and risk
                   checks keep unsafe changes from shipping.
                 </p>
                 <ul className="mt-6 space-y-3 text-sm text-white/85">
-                  <li>Confidence Scale controls how much Codex can do</li>
+                  <li>Confidence Scale controls how much CodexGo can do</li>
                   <li>Multi-agent workflow (Plan → Build → Verify)</li>
                   <li>Safety gates (Scan + Risk) before deploy</li>
                 </ul>

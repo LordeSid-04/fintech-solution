@@ -394,7 +394,7 @@ export function AIPanel({
       `[prompt] ${promptInput}`,
       approvals.length
         ? `[governance] approval context attached (${approvals.length} approver(s))`
-        : "[system] Starting governed Codex pipeline...",
+        : "[system] Starting governed CodexGo pipeline...",
     ]);
     let hasStreamOutput = false;
     try {

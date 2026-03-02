@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Codex AI",
+  title: "CodexGo",
   description: "Governed AI workspace demo.",
 };
 

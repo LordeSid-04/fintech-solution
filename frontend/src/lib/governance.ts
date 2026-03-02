@@ -102,7 +102,7 @@ export function getGovernanceConfig(percent: number): GovernanceConfig {
     return {
       mode,
       label: "Manual Mode",
-      description: "Codex assists with suggestions and diffs; humans execute final actions.",
+      description: "CodexGo assists with suggestions and diffs; humans execute final actions.",
       permissions: getPermissions(mode),
       riskPolicy: "strict_manual",
     };
@@ -112,7 +112,7 @@ export function getGovernanceConfig(percent: number): GovernanceConfig {
     return {
       mode,
       label: "Pair Mode",
-      description: "Codex and humans collaborate with checkpoints before sensitive operations.",
+      description: "CodexGo and humans collaborate with checkpoints before sensitive operations.",
       permissions: getPermissions(mode),
       riskPolicy: "review_first",
     };
@@ -121,7 +121,7 @@ export function getGovernanceConfig(percent: number): GovernanceConfig {
   return {
     mode,
     label: "Autopilot with Gates",
-    description: "Codex automates broader flows while policy and risk controls enforce stops.",
+    description: "CodexGo automates broader flows while policy and risk controls enforce stops.",
     permissions: getPermissions(mode),
     riskPolicy: "traffic_light",
   };

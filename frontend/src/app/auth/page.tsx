@@ -19,7 +19,7 @@ export default function AuthPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const title = useMemo(
-    () => (mode === "signup" ? "Create your account" : "Login to Codex AI"),
+    () => (mode === "signup" ? "Create your account" : "Login to CodexGo"),
     [mode]
   );
 
@@ -69,7 +69,7 @@ export default function AuthPage() {
           >
             Back
           </Link>
-          <div className="text-xs tracking-[0.2em] text-white/70">CODEX AI</div>
+          <div className="text-xs tracking-[0.2em] text-white/70">CodexGo</div>
         </div>
 
         <div className="rounded-2xl border border-white/12 bg-white/[0.02] p-5">
