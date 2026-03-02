@@ -8,7 +8,7 @@ It combines multi-agent orchestration, security scanning, risk scoring, human ap
 
 ## Evaluation Evidence
 
-- Detailed test and evaluation report: `docs/evaluation.md`
+- Detailed test and evaluation report: `Evaluation.md`
 
 ---
 
