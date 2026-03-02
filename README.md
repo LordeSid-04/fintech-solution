@@ -363,6 +363,7 @@ The confidence slider controls permissions and Gate Decision strictness.
 - Low/Medium Risk Tier can proceed.
 - High Risk Tier requires Approval.
 - Critical Risk Tier is blocked unless Break-glass override is supplied.
+- Build prompts in autopilot now use multi-pass quality refinement (prompt-grounding + intent scoring) and deterministic premium fallbacks for `website`, `chatbot`, `dashboard`, and general `app` intents to keep output quality high even in fallback/no-key mode.
 
 ## Backend Architecture
 

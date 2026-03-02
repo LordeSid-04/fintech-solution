@@ -151,3 +151,41 @@ test("intent quality score favors chatbot artifacts for chatbot prompts", () => 
   }, "chatbot");
   assert.equal(chatbotScore > websiteScore, true);
 });
+
+test("premium fallback builder returns intent-specific files", () => {
+  const dashboardFiles = __test.buildPremiumFilesByIntent(
+    "Build an analytics dashboard for sales ops",
+    "dashboard"
+  );
+  assert.ok(dashboardFiles["src/app/page.tsx"].toLowerCase().includes("dashboard"));
+  assert.ok(dashboardFiles["preview/index.html"]);
+
+  const appFiles = __test.buildPremiumFilesByIntent("Build a task planner app", "app");
+  assert.ok(appFiles["src/app/page.tsx"]);
+  assert.ok(appFiles["src/app/globals.css"]);
+});
+
+test("autopilot quality gate requires stronger quality for website prompts", () => {
+  const prompt = 'build me a company website. company name is "MNB".';
+  const weakArtifact = {
+    assistantReply: "Built a site.",
+    rationale: "Simple page.",
+    generatedFiles: {
+      "src/app/page.tsx": "<h1>MNB</h1>",
+      "src/app/layout.tsx": "layout",
+      "src/app/globals.css": "body{}",
+    },
+  };
+  const strongArtifact = {
+    assistantReply: "Built MNB website with hero, services, about, testimonials, and contact.",
+    rationale: "Premium architecture with responsive sections.",
+    generatedFiles: {
+      "src/app/page.tsx": "hero services about testimonials contact MNB responsive",
+      "src/app/layout.tsx": "layout",
+      "src/app/globals.css": "styles @media",
+      "preview/index.html": "hero services about testimonials contact",
+    },
+  };
+  assert.equal(__test.isHighQualityAutopilotArtifact(prompt, weakArtifact, "website"), false);
+  assert.equal(__test.isHighQualityAutopilotArtifact(prompt, strongArtifact, "website"), true);
+});

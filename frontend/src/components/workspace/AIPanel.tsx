@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Code2, Eye, FileDiff, Logs, MessageSquareText, PanelBottomOpen } from "lucide-react";
+import { Check, Code2, Copy, Eye, FileDiff, Logs, MessageSquareText, PanelBottomOpen, X } from "lucide-react";
 import type { GovernanceMode, GovernancePermission, PermissionState } from "@/lib/governance";
 import {
   fetchApprovalHistory,
@@ -118,6 +118,13 @@ function appendStreamLines(previous: string[], additions: string[]): string[] {
   return [...previous, ...additions].slice(-160);
 }
 
+function toDisplayRiskLabel(riskTier?: "LOW" | "MED" | "HIGH" | "CRITICAL"): "LOW" | "MEDIUM" | "HIGH" {
+  if (!riskTier) return "MEDIUM";
+  if (riskTier === "LOW") return "LOW";
+  if (riskTier === "MED") return "MEDIUM";
+  return "HIGH";
+}
+
 export function AIPanel({
   mode,
   confidencePercent,
@@ -155,6 +162,23 @@ export function AIPanel({
   const [manualEditMode, setManualEditMode] = useState(false);
   const [selectedCodeSnippet, setSelectedCodeSnippet] = useState("");
   const [editorRunResult, setEditorRunResult] = useState<RunCodeResult | null>(null);
+  const [pairPendingFiles, setPairPendingFiles] = useState<Record<string, string>>({});
+  const [pairRiskLabel, setPairRiskLabel] = useState<"LOW" | "MEDIUM" | "HIGH" | null>(null);
+  const [pairRiskScore, setPairRiskScore] = useState<number | null>(null);
+  const [pairRiskExpanded, setPairRiskExpanded] = useState(false);
+  const [pairRiskDetails, setPairRiskDetails] = useState<{
+    topDrivers: string[];
+    reasonCodes: string[];
+    requiredControls: string[];
+    blockReasons: string[];
+  }>({
+    topDrivers: [],
+    reasonCodes: [],
+    requiredControls: [],
+    blockReasons: [],
+  });
+  const [pairCopied, setPairCopied] = useState(false);
+  const [pairDecision, setPairDecision] = useState<"approved" | "denied" | null>(null);
   const [viewerTab, setViewerTab] = useState<"preview" | "editor" | "diff" | "logs" | "response">(
     mode === "autopilot" ? "preview" : "editor"
   );
@@ -207,19 +231,6 @@ export function AIPanel({
   const pendingResponseLinesRef = useRef<string[]>([]);
   const streamFlushTimerRef = useRef<number | null>(null);
   const showPreviewTab = mode === "autopilot";
-  const previewTextForSuggestions = useMemo(() => {
-    if (!previewHtml?.trim()) {
-      return "";
-    }
-    try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(previewHtml, "text/html");
-      const text = doc.body?.textContent?.trim() ?? "";
-      return text || previewHtml.trim();
-    } catch {
-      return previewHtml.trim();
-    }
-  }, [previewHtml]);
 
   const flushQueuedStreamUpdates = useCallback(() => {
     if (streamFlushTimerRef.current !== null) {
@@ -367,6 +378,18 @@ export function AIPanel({
       highlightedSnippet: "",
       matchedTerms: [],
     });
+    setPairPendingFiles({});
+    setPairRiskLabel(null);
+    setPairRiskScore(null);
+    setPairRiskExpanded(false);
+    setPairRiskDetails({
+      topDrivers: [],
+      reasonCodes: [],
+      requiredControls: [],
+      blockReasons: [],
+    });
+    setPairCopied(false);
+    setPairDecision(null);
     setRunLogs([
       `[prompt] ${promptInput}`,
       approvals.length
@@ -424,7 +447,11 @@ export function AIPanel({
           }
           if (event.type === "generated_files") {
             hasStreamOutput = true;
-            onGeneratedFiles?.(event.files);
+            if (mode !== "pair") {
+              onGeneratedFiles?.(event.files);
+            } else {
+              setPairPendingFiles((prev) => ({ ...prev, ...event.files }));
+            }
             setResponseSummary((prev) => ({
               ...prev,
               generatedFiles: { ...prev.generatedFiles, ...event.files },
@@ -504,6 +531,20 @@ export function AIPanel({
         highlightedSnippet: "",
         matchedTerms: [],
       }));
+      if (mode === "pair") {
+        const mergedFiles = runResult.artifacts?.diff?.generatedFiles ?? {};
+        if (Object.keys(mergedFiles).length) {
+          setPairPendingFiles((prev) => ({ ...prev, ...mergedFiles }));
+        }
+        setPairRiskLabel(toDisplayRiskLabel(runResult.gate?.riskTier));
+        setPairRiskScore(typeof runResult.gate?.riskScore === "number" ? runResult.gate.riskScore : null);
+        setPairRiskDetails({
+          topDrivers: runResult.gate?.riskCard?.topDrivers ?? [],
+          reasonCodes: runResult.gate?.reasonCodes ?? [],
+          requiredControls: runResult.gate?.riskCard?.requiredControls ?? [],
+          blockReasons: runResult.gate?.blockReasons ?? [],
+        });
+      }
       if (mode === "autopilot") {
         maybeAutoSwitchToResponse();
       } else {
@@ -547,8 +588,19 @@ export function AIPanel({
         );
         setTimeline(runResult.timeline);
         setProofs(runResult.proofs ?? []);
-        if (runResult.artifacts?.diff?.generatedFiles) {
+        if (runResult.artifacts?.diff?.generatedFiles && mode !== "pair") {
           onGeneratedFiles?.(runResult.artifacts.diff.generatedFiles);
+        }
+        if (mode === "pair") {
+          setPairPendingFiles(runResult.artifacts?.diff?.generatedFiles ?? {});
+          setPairRiskLabel(toDisplayRiskLabel(runResult.gate?.riskTier));
+          setPairRiskScore(typeof runResult.gate?.riskScore === "number" ? runResult.gate.riskScore : null);
+          setPairRiskDetails({
+            topDrivers: runResult.gate?.riskCard?.topDrivers ?? [],
+            reasonCodes: runResult.gate?.reasonCodes ?? [],
+            requiredControls: runResult.gate?.riskCard?.requiredControls ?? [],
+            blockReasons: runResult.gate?.blockReasons ?? [],
+          });
         }
         setRunLogs((prev) => [...prev, ...buildRunLogs(promptInput, runResult)].slice(-120));
         if ((runResult.proofs ?? []).some((item) => item.proof.provider === "codex-harness")) {
@@ -680,6 +732,16 @@ export function AIPanel({
 
     await runWithGovernance(approvalModal.prompt, approvalRecords, breakGlass);
   };
+
+  const pairPrimaryPath = useMemo(() => Object.keys(pairPendingFiles)[0] ?? "", [pairPendingFiles]);
+  const pairPrimaryCode = pairPrimaryPath ? pairPendingFiles[pairPrimaryPath] ?? "" : "";
+  const showSuggestionsBox = mode === "pair"
+    ? Boolean(pairPrimaryCode)
+    : Boolean(
+        responseSummary.assistantReply ||
+          responseSummary.rationale ||
+          responseSummary.streamLines.length
+      );
 
   const getPermissionState = (
     category: GovernancePermission["category"]
@@ -1017,25 +1079,119 @@ export function AIPanel({
                 {viewerTab === "editor" ? (
                   selectedFile ? (
                     <div className="h-full space-y-2">
-                      {isHumanGuided &&
-                      (responseSummary.assistantReply ||
-                        responseSummary.rationale ||
-                        (mode === "pair" && previewTextForSuggestions) ||
-                        responseSummary.streamLines.length) ? (
+                      {isHumanGuided && showSuggestionsBox ? (
                         <div className="rounded border border-violet-300/30 bg-violet-300/[0.08] p-1.5 text-[11px] text-violet-100">
                           <p className="font-semibold uppercase tracking-[0.08em] text-violet-100/90">
                             Suggestions
                           </p>
                           {mode === "pair" ? (
-                            previewTextForSuggestions ? (
-                              <pre className="mt-1 whitespace-pre-wrap rounded border border-white/10 bg-black/35 p-2 text-white/85">
-                                {previewTextForSuggestions}
+                            <div className="mt-1 space-y-2">
+                              <div className="rounded border border-white/12 bg-black/35 px-2 py-1.5 text-[10px]">
+                                <p className="font-semibold uppercase tracking-[0.08em] text-white/70">
+                                  Security / Risk Analysis
+                                </p>
+                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                                    pairRiskLabel === "LOW"
+                                      ? "border-emerald-300/40 bg-emerald-300/12 text-emerald-100"
+                                      : pairRiskLabel === "MEDIUM"
+                                        ? "border-amber-300/40 bg-amber-300/12 text-amber-100"
+                                        : "border-rose-300/40 bg-rose-300/12 text-rose-100"
+                                  }`}>
+                                    FINAL RISK: {pairRiskLabel || "MEDIUM"}
+                                  </span>
+                                  <span className="text-white/70">
+                                    {pairRiskScore !== null ? `Score ${pairRiskScore}/100` : "Score pending"}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPairRiskExpanded((prev) => !prev)}
+                                    className="rounded border border-white/20 px-2 py-0.5 text-[10px] text-white/80 hover:bg-white/[0.08]"
+                                  >
+                                    {pairRiskExpanded ? "Hide details" : "Why?"}
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="rounded border border-white/15 bg-black/35 px-2 py-0.5 font-mono text-[10px] text-white/75">
+                                  {pairPrimaryPath}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    try {
+                                      await navigator.clipboard.writeText(pairPrimaryCode);
+                                      setPairCopied(true);
+                                      window.setTimeout(() => setPairCopied(false), 1200);
+                                    } catch {
+                                      setPairCopied(false);
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded border border-white/20 px-2 py-0.5 text-[10px] text-white/80 hover:bg-white/[0.08]"
+                                  title="Copy recommendation"
+                                >
+                                  <Copy className="h-3 w-3" />
+                                  {pairCopied ? "Copied" : "Copy"}
+                                </button>
+                              </div>
+                              <pre className="max-h-44 overflow-auto rounded border border-white/10 bg-black/45 p-2 font-mono text-[11px] text-white/85">
+                                {pairPrimaryCode}
                               </pre>
-                            ) : (
-                              <p className="mt-1 text-white/70">
-                                No preview content yet. Run a prompt to generate output.
-                              </p>
-                            )
+                              {pairRiskExpanded ? (
+                                <div className="rounded border border-white/10 bg-black/35 p-2 text-[10px] text-white/75">
+                                  {pairRiskDetails.topDrivers.length ? (
+                                    <p>Top drivers: {pairRiskDetails.topDrivers.join(", ")}</p>
+                                  ) : null}
+                                  {pairRiskDetails.reasonCodes.length ? (
+                                    <p className="mt-1">Reason codes: {pairRiskDetails.reasonCodes.join(", ")}</p>
+                                  ) : null}
+                                  {pairRiskDetails.requiredControls.length ? (
+                                    <p className="mt-1">
+                                      Required controls: {pairRiskDetails.requiredControls.join(", ")}
+                                    </p>
+                                  ) : null}
+                                  {pairRiskDetails.blockReasons.length ? (
+                                    <p className="mt-1">Block reasons: {pairRiskDetails.blockReasons.join(" | ")}</p>
+                                  ) : null}
+                                  {!pairRiskDetails.topDrivers.length &&
+                                  !pairRiskDetails.reasonCodes.length &&
+                                  !pairRiskDetails.requiredControls.length &&
+                                  !pairRiskDetails.blockReasons.length ? (
+                                    <p>No additional risk details returned for this recommendation.</p>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onGeneratedFiles?.(pairPendingFiles);
+                                    setPairDecision("approved");
+                                    setPairPendingFiles({});
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded border border-emerald-300/35 bg-emerald-300/12 px-2.5 py-1 text-[10px] font-medium text-emerald-100 hover:bg-emerald-300/20"
+                                >
+                                  <Check className="h-3 w-3" />
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPairDecision("denied");
+                                    setPairPendingFiles({});
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded border border-rose-300/35 bg-rose-300/12 px-2.5 py-1 text-[10px] font-medium text-rose-100 hover:bg-rose-300/20"
+                                >
+                                  <X className="h-3 w-3" />
+                                  Deny
+                                </button>
+                                {pairDecision ? (
+                                  <span className="text-[10px] text-white/70">
+                                    Recommendation {pairDecision}.
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
                           ) : (
                             <>
                               {responseSummary.assistantReply ? (

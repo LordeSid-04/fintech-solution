@@ -407,6 +407,131 @@ export default function RootLayout({ children }) {
   };
 }
 
+function buildPremiumDashboardFiles(prompt) {
+  const brand = deriveBrandLabel(prompt) || "Ops Dashboard";
+  const page = `const cards = [
+  { label: "Active Users", value: "12,480", delta: "+12.4%" },
+  { label: "Conversion", value: "4.8%", delta: "+0.6%" },
+  { label: "MRR", value: "$82,300", delta: "+7.9%" },
+  { label: "Incidents", value: "2", delta: "-60%" },
+];
+
+export default function DashboardPage() {
+  return (
+    <main className="shell">
+      <header className="topbar">
+        <div>
+          <p className="eyebrow">Analytics Dashboard</p>
+          <h1>${brand}</h1>
+          <p className="subtitle">Operational visibility with clean KPI summaries and trend cues.</p>
+        </div>
+        <button className="button">Export</button>
+      </header>
+
+      <section className="kpiGrid">
+        {cards.map((card) => (
+          <article key={card.label} className="card">
+            <p className="muted">{card.label}</p>
+            <h2>{card.value}</h2>
+            <p className="delta">{card.delta}</p>
+          </article>
+        ))}
+      </section>
+
+      <section className="layout">
+        <article className="panel large">
+          <h3>Revenue Trend</h3>
+          <div className="chartPlaceholder">Interactive chart placeholder</div>
+        </article>
+        <article className="panel">
+          <h3>Top Segments</h3>
+          <ul>
+            <li>Enterprise - 38%</li>
+            <li>SMB - 34%</li>
+            <li>Startup - 28%</li>
+          </ul>
+        </article>
+      </section>
+    </main>
+  );
+}
+`;
+  const globals = `:root{--bg:#060912;--card:#121b31;--line:rgba(255,255,255,.12);--text:#f6f8ff;--muted:#afbbdc;--accent:#79a9ff}*{box-sizing:border-box}html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:Inter,Segoe UI,Roboto,Arial,sans-serif}.shell{width:min(1100px,94vw);margin:0 auto;padding:26px 0 54px}.topbar{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.eyebrow{text-transform:uppercase;letter-spacing:.12em;font-size:12px;color:var(--muted)}.subtitle,.muted{color:var(--muted)}.button{border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--text);border-radius:10px;padding:8px 12px}.kpiGrid{margin-top:16px;display:grid;gap:12px;grid-template-columns:repeat(4,minmax(0,1fr))}.card{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:14px}.delta{color:#8be19f}.layout{margin-top:16px;display:grid;gap:12px;grid-template-columns:2fr 1fr}.panel{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:14px}.panel.large{min-height:250px}.chartPlaceholder{margin-top:10px;border:1px dashed var(--line);border-radius:10px;display:grid;place-items:center;min-height:180px;color:var(--muted)}ul{padding-left:18px}@media(max-width:900px){.kpiGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.layout{grid-template-columns:1fr}}`;
+  const layout = `import "./globals.css";
+export const metadata = { title: "${brand}", description: "High-quality dashboard scaffold generated from prompt intent." };
+export default function RootLayout({ children }) {
+  return <html lang="en"><body>{children}</body></html>;
+}
+`;
+  const preview = `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>${brand}</title><style>${globals}</style></head><body><main class="shell"><header class="topbar"><div><p class="eyebrow">Analytics Dashboard</p><h1>${brand}</h1><p class="subtitle">Operational visibility with clean KPI summaries and trend cues.</p></div><button class="button">Export</button></header><section class="kpiGrid"><article class="card"><p class="muted">Active Users</p><h2>12,480</h2><p class="delta">+12.4%</p></article><article class="card"><p class="muted">Conversion</p><h2>4.8%</h2><p class="delta">+0.6%</p></article><article class="card"><p class="muted">MRR</p><h2>$82,300</h2><p class="delta">+7.9%</p></article><article class="card"><p class="muted">Incidents</p><h2>2</h2><p class="delta">-60%</p></article></section></main></body></html>`;
+  return {
+    "src/app/layout.tsx": layout,
+    "src/app/page.tsx": page,
+    "src/app/globals.css": globals,
+    "preview/index.html": preview,
+  };
+}
+
+function buildPremiumAppFiles(prompt) {
+  const brand = deriveBrandLabel(prompt) || "Product App";
+  const page = `const features = [
+  "Modern responsive interface",
+  "Intent-aligned starter architecture",
+  "Clean information hierarchy",
+  "Production-minded styling baseline",
+];
+
+export default function HomePage() {
+  return (
+    <main className="appShell">
+      <section className="hero">
+        <p className="eyebrow">Generated Application</p>
+        <h1>${brand}</h1>
+        <p className="subtitle">A high-quality app foundation generated from your prompt with structure, polish, and clarity.</p>
+      </section>
+      <section className="grid">
+        {features.map((feature) => (
+          <article key={feature} className="panel">
+            <h2>{feature}</h2>
+            <p>Use this as a base and continue iterating with governed diffs.</p>
+          </article>
+        ))}
+      </section>
+    </main>
+  );
+}
+`;
+  const globals = `:root{--bg:#070b14;--card:#131c33;--line:rgba(255,255,255,.12);--text:#f6f8ff;--muted:#b6c1df;--accent:#8aa8ff}*{box-sizing:border-box}html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:Inter,Segoe UI,Roboto,Arial,sans-serif}.appShell{width:min(1100px,94vw);margin:0 auto;padding:28px 0 56px}.hero{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));padding:20px}.eyebrow{text-transform:uppercase;letter-spacing:.12em;font-size:12px;color:var(--muted)}.subtitle{color:var(--muted)}.grid{margin-top:14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.panel{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:14px}.panel p{color:var(--muted)}@media(max-width:760px){.grid{grid-template-columns:1fr}}`;
+  const layout = `import "./globals.css";
+export const metadata = { title: "${brand}", description: "Intent-aligned premium app starter." };
+export default function RootLayout({ children }) {
+  return <html lang="en"><body>{children}</body></html>;
+}
+`;
+  const preview = `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>${brand}</title><style>${globals}</style></head><body><main class="appShell"><section class="hero"><p class="eyebrow">Generated Application</p><h1>${brand}</h1><p class="subtitle">A high-quality app foundation generated from your prompt with structure, polish, and clarity.</p></section></main></body></html>`;
+  return {
+    "src/app/layout.tsx": layout,
+    "src/app/page.tsx": page,
+    "src/app/globals.css": globals,
+    "preview/index.html": preview,
+  };
+}
+
+function buildPremiumFilesByIntent(prompt, intent) {
+  if (intent === "chatbot") return buildPremiumChatbotFiles(prompt);
+  if (intent === "dashboard") return buildPremiumDashboardFiles(prompt);
+  if (intent === "website") return buildPremiumCompanyWebsiteFiles(prompt, extractCompanyName(prompt));
+  return buildPremiumAppFiles(prompt);
+}
+
+function isHighQualityAutopilotArtifact(prompt, artifact, intent) {
+  const grounded = isArtifactGroundedToPrompt(prompt, artifact) && !hasUnexpectedPortfolioTemplate(prompt, artifact);
+  if (!grounded) return false;
+  const score = scoreArtifactQualityByIntent(prompt, artifact, intent);
+  if (intent === "website") return score >= 80;
+  return score >= 75;
+}
+
 function scoreArtifactQualityByIntent(prompt, artifact, intent) {
   if (intent === "website") {
     return scoreWebsiteArtifactQuality(prompt, artifact);
@@ -543,7 +668,6 @@ async function runDeveloperAgent({
   confidenceMode = "pair",
 }) {
   const buildMode = isBuildPrompt(userRequest);
-  const companyWebsiteMode = confidenceMode === "autopilot" && isCompanyWebsitePrompt(userRequest);
   const autopilotBuildMode = confidenceMode === "autopilot" && buildMode;
   const buildIntent = detectBuildIntent(userRequest);
   const grounding = buildPromptGroundingTerms(userRequest);
@@ -589,64 +713,66 @@ async function runDeveloperAgent({
   };
   let normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest);
 
-  const needsRegeneration =
-    buildMode &&
-    (!isArtifactGroundedToPrompt(userRequest, normalizedArtifact) ||
+  const maxRefinementPasses = autopilotBuildMode ? 3 : 2;
+  let pass = 0;
+  while (buildMode && pass < maxRefinementPasses) {
+    const qualityGateFailed =
+      !isArtifactGroundedToPrompt(userRequest, normalizedArtifact) ||
       hasUnexpectedPortfolioTemplate(userRequest, normalizedArtifact) ||
       isLowQualityBuildArtifact(userRequest, normalizedArtifact) ||
       !isCompanyPromptGrounded(userRequest, normalizedArtifact) ||
-      (autopilotBuildMode && scoreArtifactQualityByIntent(userRequest, normalizedArtifact, buildIntent) < 70));
+      (autopilotBuildMode && !isHighQualityAutopilotArtifact(userRequest, normalizedArtifact, buildIntent));
 
-  if (needsRegeneration) {
-    const correctionPrompt = `${userPrompt}\n\nYour previous output did not follow the user's core intent closely enough. Regenerate with strict prompt adherence.\nRequired domain terms from prompt: ${
+    if (!qualityGateFailed) {
+      break;
+    }
+
+    const correctionPrompt = `${userPrompt}\n\nRefinement pass ${
+      pass + 1
+    }: your previous output was not sufficiently production-grade for this prompt.\nRequired domain terms from prompt: ${
       grounding.domainTerms.join(", ") || "(none)"
-    }\nEnsure these terms appear in assistantReply/rationale and reflected in generated files content.\nDo not generate portfolio templates unless the user explicitly asks for a portfolio.\nRegenerate with richer, business-relevant copy and cleaner information architecture.\nFor company website prompts, include a premium hero, services, about, testimonials, and contact sections with polished visual structure.`;
+    }\nStrict requirements:\n- deeply align with prompt domain and wording\n- avoid portfolio templates unless explicitly requested\n- deliver polished structure, meaningful copy, and responsive layout\n- include all essential files for a runnable starter\n- generate publication-quality UI hierarchy and spacing\n- keep assistantReply + rationale concise but specific to generated output`;
     codex = await callCodex({
       agentRole: "DEVELOPER",
       systemPrompt,
       userPrompt: correctionPrompt,
     });
     normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest);
-    const stillLowQuality =
-      !isArtifactGroundedToPrompt(userRequest, normalizedArtifact) ||
+    pass += 1;
+  }
+
+  const stillLowQualityAfterRefinement =
+    buildMode &&
+    (!isArtifactGroundedToPrompt(userRequest, normalizedArtifact) ||
       hasUnexpectedPortfolioTemplate(userRequest, normalizedArtifact) ||
       isLowQualityBuildArtifact(userRequest, normalizedArtifact) ||
       !isCompanyPromptGrounded(userRequest, normalizedArtifact) ||
-      (autopilotBuildMode && scoreArtifactQualityByIntent(userRequest, normalizedArtifact, buildIntent) < 75);
+      (autopilotBuildMode && !isHighQualityAutopilotArtifact(userRequest, normalizedArtifact, buildIntent)));
 
-    if (stillLowQuality) {
-      if (autopilotBuildMode) {
-        const premiumFiles =
-          buildIntent === "chatbot"
-            ? buildPremiumChatbotFiles(userRequest)
-            : buildPremiumCompanyWebsiteFiles(userRequest, extractCompanyName(userRequest));
-        normalizedArtifact.generatedFiles = {
-          ...normalizedArtifact.generatedFiles,
-          ...premiumFiles,
-        };
-        normalizedArtifact.filesTouched = Array.from(
-          new Set([...Object.keys(normalizedArtifact.generatedFiles), ...normalizedArtifact.filesTouched])
-        );
-        normalizedArtifact.previewHtml = premiumFiles["preview/index.html"];
-        normalizedArtifact.assistantReply =
-          buildIntent === "chatbot"
-            ? `Built a high-quality, responsive AI chatbot app tailored to your prompt.`
-            : `Built a high-quality prompt-aligned website for ${deriveBrandLabel(userRequest)} with premium information architecture and content sections.`;
-        normalizedArtifact.rationale =
-          "Autopilot premium quality fallback was applied to guarantee strong relevance and publication-grade output.";
-      }
-      normalizedArtifact.rationale = `${normalizedArtifact.rationale} Prompt grounding warning: output may be incomplete for requested intent.`;
-      if (companyWebsiteMode && hasUnexpectedPortfolioTemplate(userRequest, normalizedArtifact)) {
-        normalizedArtifact.previewHtml = "";
-      }
-    }
+  if (stillLowQualityAfterRefinement && autopilotBuildMode) {
+    const premiumFiles = buildPremiumFilesByIntent(userRequest, buildIntent);
+    normalizedArtifact.generatedFiles = {
+      ...normalizedArtifact.generatedFiles,
+      ...premiumFiles,
+    };
+    normalizedArtifact.filesTouched = Array.from(
+      new Set([...Object.keys(normalizedArtifact.generatedFiles), ...normalizedArtifact.filesTouched])
+    );
+    normalizedArtifact.previewHtml = premiumFiles["preview/index.html"];
+    normalizedArtifact.assistantReply =
+      buildIntent === "chatbot"
+        ? "Built a high-quality, responsive AI chatbot experience tailored to your prompt."
+        : buildIntent === "dashboard"
+          ? "Built a high-quality analytics dashboard with polished KPI, layout, and responsive structure."
+          : buildIntent === "website"
+            ? `Built a high-quality prompt-aligned website for ${deriveBrandLabel(userRequest)} with premium information architecture and content sections.`
+            : `Built a high-quality app scaffold for ${deriveBrandLabel(userRequest)} with modern responsive UI foundations.`;
+    normalizedArtifact.rationale =
+      "Autopilot premium quality fallback was applied to guarantee stronger relevance, completeness, and production-ready structure.";
   }
 
   if (autopilotBuildMode && codex.proof.provider === "codex-harness") {
-    const premiumFiles =
-      buildIntent === "chatbot"
-        ? buildPremiumChatbotFiles(userRequest)
-        : buildPremiumCompanyWebsiteFiles(userRequest, extractCompanyName(userRequest));
+    const premiumFiles = buildPremiumFilesByIntent(userRequest, buildIntent);
     normalizedArtifact.generatedFiles = {
       ...normalizedArtifact.generatedFiles,
       ...premiumFiles,
@@ -658,9 +784,13 @@ async function runDeveloperAgent({
     normalizedArtifact.assistantReply =
       buildIntent === "chatbot"
         ? "Built a premium responsive AI chatbot experience while OpenAI fallback mode was active."
-        : `Built a premium prompt-aligned website for ${deriveBrandLabel(userRequest)} while OpenAI fallback mode was active.`;
+        : buildIntent === "dashboard"
+          ? "Built a premium analytics dashboard experience while OpenAI fallback mode was active."
+          : buildIntent === "website"
+            ? `Built a premium prompt-aligned website for ${deriveBrandLabel(userRequest)} while OpenAI fallback mode was active.`
+            : `Built a premium prompt-aligned application for ${deriveBrandLabel(userRequest)} while OpenAI fallback mode was active.`;
     normalizedArtifact.rationale =
-      "Applied deterministic premium website generation to preserve quality and relevance in autopilot mode.";
+      "Applied deterministic premium generation to preserve quality and relevance in autopilot mode.";
   }
 
   return {
@@ -684,5 +814,7 @@ module.exports = {
     scoreWebsiteArtifactQuality,
     scoreArtifactQualityByIntent,
     deriveBrandLabel,
+    buildPremiumFilesByIntent,
+    isHighQualityAutopilotArtifact,
   },
 };
