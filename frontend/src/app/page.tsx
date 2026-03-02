@@ -166,39 +166,39 @@ export default function Home() {
       container.scrollTop -
       topOffset;
 
-    const smoothBehaviorSupported =
-      typeof window !== "undefined" &&
-      "scrollBehavior" in document.documentElement.style;
+    const startPosition = container.scrollTop;
+    const distance = targetPosition - startPosition;
+    const duration = shouldReduceMotion
+      ? 0
+      : Math.min(900, Math.max(520, Math.abs(distance) * 0.85));
+    const startTime = performance.now();
+    container.dataset.programmaticScroll = "true";
 
-    if (smoothBehaviorSupported) {
-      container.dataset.programmaticScroll = "true";
-      container.scrollTo({
-        top: targetPosition,
-        behavior: "smooth",
-      });
-      window.setTimeout(() => {
-        delete container.dataset.programmaticScroll;
-      }, 520);
+    if (shouldReduceMotion) {
+      container.scrollTop = targetPosition;
+      delete container.dataset.programmaticScroll;
       return;
     }
 
-    const startPosition = container.scrollTop;
-    const distance = targetPosition - startPosition;
-    const duration = 420;
-    const startTime = performance.now();
-
     const animateScroll = (currentTime: number) => {
       const elapsed = Math.min((currentTime - startTime) / duration, 1);
-      const easeOut = 1 - Math.pow(1 - elapsed, 3);
-      container.scrollTop = startPosition + distance * easeOut;
+      const easedProgress =
+        elapsed < 0.5
+          ? 4 * elapsed * elapsed * elapsed
+          : 1 - Math.pow(-2 * elapsed + 2, 3) / 2;
+      container.scrollTop = startPosition + distance * easedProgress;
 
       if (elapsed < 1) {
         window.requestAnimationFrame(animateScroll);
+      } else {
+        window.setTimeout(() => {
+          delete container.dataset.programmaticScroll;
+        }, 80);
       }
     };
 
     window.requestAnimationFrame(animateScroll);
-  }, []);
+  }, [shouldReduceMotion]);
 
   const handleNavClick = (id: string) => {
     if (typeof window !== "undefined") {
@@ -279,8 +279,11 @@ export default function Home() {
         />
       </div>
       <div
-        className="absolute inset-0 z-0 bg-cover bg-center opacity-50"
-        style={{ backgroundImage: "url('/untitled-design.gif')" }}
+        className="absolute inset-0 z-0 bg-center bg-no-repeat opacity-50"
+        style={{
+          backgroundImage: "url('/bg4.gif')",
+          backgroundSize: "95% auto",
+        }}
       />
       <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,rgba(30,64,175,0.2),transparent_60%)]" />
       <div className="absolute inset-0 z-0 bg-gradient-to-b from-black/20 via-black/60 to-[#010314]" />
@@ -332,7 +335,7 @@ export default function Home() {
         <Section className={`${spacing.container} ${spacing.heroSection} flex flex-col items-center justify-center text-center`}>
           <motion.p
             {...getHeroMotion(shouldReduceMotion, 0.05, 8)}
-            className={`mb-6 ${typography.eyebrow}`}
+            className={`mb-10 ${typography.eyebrow}`}
           >
             BUILD A NO-CODE AI APP IN MINUTES
           </motion.p>
@@ -344,7 +347,7 @@ export default function Home() {
           </motion.h1>
           <motion.p
             {...getHeroMotion(shouldReduceMotion, 0.28, 10)}
-            className={`mt-6 max-w-2xl ${typography.body}`}
+            className={`mt-3 max-w-2xl ${typography.body}`}
           >
             Design, prototype, and ship polished digital products with an intuitive
             workflow built for creators and teams.
@@ -356,7 +359,7 @@ export default function Home() {
               className="hover:shadow-[0_0_14px_rgba(96,165,250,0.22)]"
               onClick={() => router.push("/confidence")}
             >
-              Start now
+              START NOW
             </PillButton>
           </div>
           <button
