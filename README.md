@@ -6,6 +6,12 @@ It combines multi-agent orchestration, security scanning, risk scoring, human ap
 
 ---
 
+## Evaluation Evidence
+
+- Detailed test and evaluation report: `docs/evaluation.md`
+
+---
+
 ## Key Capabilities
 
 - **Confidence-based autonomy**: `assist`, `pair`, and `autopilot` modes map confidence to execution authority.
