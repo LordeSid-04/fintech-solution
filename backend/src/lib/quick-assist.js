@@ -83,6 +83,29 @@ function hasRelevanceOverlap(question, suggestion, rationale) {
   return overlap.length >= minOverlap;
 }
 
+function isHighStakesQuestion(question) {
+  return /(medical|health|treatment|diagnosis|dosage|legal|law|contract|tax|finance|investment|security|safety)/i.test(
+    String(question || "")
+  );
+}
+
+function hasVerificationCue(text) {
+  return /(verify|double-check|trusted source|official|guideline|consult|professional|jurisdiction|policy)/i.test(
+    String(text || "")
+  );
+}
+
+function ensureVerificationGuidance(question, suggestion) {
+  const cleanSuggestion = String(suggestion || "").trim();
+  if (!cleanSuggestion || hasVerificationCue(cleanSuggestion)) {
+    return cleanSuggestion;
+  }
+  if (isHighStakesQuestion(question)) {
+    return `${cleanSuggestion}\n\nVerification: For high-stakes decisions, confirm this against authoritative guidance or a qualified professional.`;
+  }
+  return `${cleanSuggestion}\n\nVerification: Cross-check this with a trusted source or example relevant to your context.`;
+}
+
 function buildClarifyingFallback(payload) {
   const question = String(payload.question || "").trim();
   const snippet = buildSnippet(payload) || "No relevant code snippet found.";
@@ -256,8 +279,9 @@ function normalizeModelSuggestion(parsed, payload) {
   if (!hasRelevanceOverlap(payload.question || "", suggestion, rationale)) {
     return buildClarifyingFallback(payload);
   }
+  const enrichedSuggestion = ensureVerificationGuidance(payload.question || "", suggestion);
   return {
-    suggestion,
+    suggestion: enrichedSuggestion,
     rationale: rationale || fallback.rationale,
     relevantSnippet,
   };

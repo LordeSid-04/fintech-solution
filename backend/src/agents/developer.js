@@ -33,6 +33,7 @@ function extractQuestionCodeSnippet(prompt) {
 function detectLogicalMismatchInSources(prompt, currentFiles = {}) {
   const promptText = String(prompt || "").toLowerCase();
   const mentionsSquare = /square|squaring|squared/.test(promptText);
+  const mentionsCube = /cube|cubed/.test(promptText);
   const mentionsEven = /even|is_even|iseven/.test(promptText);
   const mentionsOdd = /odd|is_odd|isodd/.test(promptText);
   const questionSnippet = extractQuestionCodeSnippet(prompt);
@@ -55,6 +56,18 @@ function detectLogicalMismatchInSources(prompt, currentFiles = {}) {
         fixLine: `return ${returnMultiplyMatch[1]} ** 2`,
         reason:
           "Your function is doubling the value, not squaring it. Replace multiplication by 2 with exponentiation.",
+      };
+    }
+    const cubeFunctionHint = /def\s+cub(e|ed)\s*\(/i.test(text) || /cub(e|ed)\s*\(/i.test(text);
+    const returnTripleMatch = text.match(/return\s+([a-zA-Z_][\w]*)\s*\*\s*3/);
+    if ((mentionsCube || cubeFunctionHint) && returnTripleMatch) {
+      return {
+        ...candidate,
+        variableName: returnTripleMatch[1],
+        matchedLine: returnTripleMatch[0],
+        fixLine: `return ${returnTripleMatch[1]} ** 3`,
+        reason:
+          "Your function is tripling the value, not cubing it. Replace multiplication by 3 with exponentiation.",
       };
     }
     const evenMatch = text.match(/return\s+([a-zA-Z_][\w]*)\s*%\s*2\s*==\s*1/);
@@ -162,6 +175,36 @@ function hasKnowledgeReplyRelevance(prompt, assistantReply, rationale) {
   return overlap.length >= minOverlap;
 }
 
+function isHighStakesKnowledgePrompt(prompt) {
+  const text = String(prompt || "").toLowerCase();
+  return /(medical|health|treatment|diagnosis|dosage|legal|law|contract|tax|finance|investment|security|safety)/i.test(
+    text
+  );
+}
+
+function hasVerificationCue(text) {
+  return /(verify|double-check|check official|trusted source|guideline|consult|professional|jurisdiction|policy)/i.test(
+    String(text || "")
+  );
+}
+
+function appendVerificationGuidance(prompt, assistantReply) {
+  const reply = String(assistantReply || "").trim();
+  if (!reply) return reply;
+  if (hasVerificationCue(reply)) {
+    return reply;
+  }
+  if (isHighStakesKnowledgePrompt(prompt)) {
+    return `${reply}\n\nVerification: For high-stakes decisions, confirm this with authoritative guidance or a qualified professional for your context.`;
+  }
+  return `${reply}\n\nVerification: Cross-check this against a trusted source or real example from your specific context.`;
+}
+
+function isLowSpecificityKnowledgeAnswer(assistantReply) {
+  const tokens = tokenizeKnowledgeText(assistantReply);
+  return tokens.length < 6;
+}
+
 function looksLikeGeneralKnowledgePrompt(prompt, currentFiles = {}) {
   const text = String(prompt || "").trim();
   if (!text) return false;
@@ -200,6 +243,10 @@ function normalizeKnowledgeArtifact(raw, prompt) {
   if (!hasKnowledgeReplyRelevance(prompt, assistantReply, rationale)) {
     return buildKnowledgeFallbackArtifact(prompt);
   }
+  if (isLowSpecificityKnowledgeAnswer(assistantReply)) {
+    return buildKnowledgeFallbackArtifact(prompt);
+  }
+  const enrichedReply = appendVerificationGuidance(prompt, assistantReply);
   return {
     unifiedDiff: "",
     filesTouched: [],
@@ -208,7 +255,7 @@ function normalizeKnowledgeArtifact(raw, prompt) {
       "Provided a relevance-checked domain response with explicit uncertainty handling where needed.",
     generatedFiles: {},
     previewHtml: "",
-    assistantReply,
+    assistantReply: enrichedReply,
   };
 }
 
@@ -1150,6 +1197,8 @@ async function runDeveloperAgent({
         "You are DEVELOPER in a governed multi-agent pipeline.",
         "The user asked a general knowledge question (not a build/code patch request).",
         "Respond with high correctness, clear logic, and direct relevance to the exact question.",
+        "Cover the user's actual domain/topic and avoid generic filler.",
+        "Give a concise direct answer first, then brief reasoning, then one verification step.",
         "Do not invent facts, references, datasets, or certainty.",
         "If uncertainty exists, state it explicitly and provide a practical way to verify.",
         "Return strict JSON only with keys: assistantReply, rationale.",
@@ -1340,5 +1389,7 @@ module.exports = {
     looksLikeGeneralKnowledgePrompt,
     hasKnowledgeReplyRelevance,
     normalizeKnowledgeArtifact,
+    isHighStakesKnowledgePrompt,
+    isLowSpecificityKnowledgeAnswer,
   },
 };

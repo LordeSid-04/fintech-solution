@@ -738,7 +738,7 @@ export function AIPanel({
   const pairPrimaryPath = useMemo(() => Object.keys(pairPendingFiles)[0] ?? "", [pairPendingFiles]);
   const pairPrimaryCode = pairPrimaryPath ? pairPendingFiles[pairPrimaryPath] ?? "" : "";
   const showSuggestionsBox = mode === "pair"
-    ? Boolean(pairPrimaryCode)
+    ? Boolean(pairPrimaryCode || responseSummary.assistantReply || responseSummary.rationale)
     : Boolean(
         responseSummary.assistantReply ||
           responseSummary.rationale ||
@@ -1114,31 +1114,47 @@ export function AIPanel({
                                   </button>
                                 </div>
                               </div>
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="rounded border border-white/15 bg-black/35 px-2 py-0.5 font-mono text-[10px] text-white/75">
-                                  {pairPrimaryPath}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    try {
-                                      await navigator.clipboard.writeText(pairPrimaryCode);
-                                      setPairCopied(true);
-                                      window.setTimeout(() => setPairCopied(false), 1200);
-                                    } catch {
-                                      setPairCopied(false);
-                                    }
-                                  }}
-                                  className="inline-flex items-center gap-1 rounded border border-white/20 px-2 py-0.5 text-[10px] text-white/80 hover:bg-white/[0.08]"
-                                  title="Copy recommendation"
-                                >
-                                  <Copy className="h-3 w-3" />
-                                  {pairCopied ? "Copied" : "Copy"}
-                                </button>
-                              </div>
-                              <pre className="max-h-44 overflow-auto rounded border border-white/10 bg-black/45 p-2 font-mono text-[11px] text-white/85">
-                                {pairPrimaryCode}
-                              </pre>
+                              {pairPrimaryCode ? (
+                                <>
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <span className="rounded border border-white/15 bg-black/35 px-2 py-0.5 font-mono text-[10px] text-white/75">
+                                      {pairPrimaryPath}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        try {
+                                          await navigator.clipboard.writeText(pairPrimaryCode);
+                                          setPairCopied(true);
+                                          window.setTimeout(() => setPairCopied(false), 1200);
+                                        } catch {
+                                          setPairCopied(false);
+                                        }
+                                      }}
+                                      className="inline-flex items-center gap-1 rounded border border-white/20 px-2 py-0.5 text-[10px] text-white/80 hover:bg-white/[0.08]"
+                                      title="Copy recommendation"
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                      {pairCopied ? "Copied" : "Copy"}
+                                    </button>
+                                  </div>
+                                  <pre className="max-h-44 overflow-auto rounded border border-white/10 bg-black/45 p-2 font-mono text-[11px] text-white/85">
+                                    {pairPrimaryCode}
+                                  </pre>
+                                </>
+                              ) : (
+                                <div className="rounded border border-white/10 bg-black/45 p-2 text-[11px] text-white/80">
+                                  {responseSummary.assistantReply ? (
+                                    <p className="whitespace-pre-wrap">{responseSummary.assistantReply}</p>
+                                  ) : null}
+                                  {responseSummary.rationale ? (
+                                    <p className="mt-1 whitespace-pre-wrap text-white/70">{responseSummary.rationale}</p>
+                                  ) : null}
+                                  <p className="mt-1 text-[10px] text-white/55">
+                                    No direct file patch was produced for this prompt. Try asking for an explicit code edit.
+                                  </p>
+                                </div>
+                              )}
                               {pairRiskExpanded ? (
                                 <div className="rounded border border-white/10 bg-black/35 p-2 text-[10px] text-white/75">
                                   {pairRiskDetails.topDrivers.length ? (

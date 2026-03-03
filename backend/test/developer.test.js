@@ -283,6 +283,16 @@ test("detects and fixes inverted even-check logic for non-build prompts", () => 
   assert.match(mismatch.fixLine, /% 2 == 0/);
 });
 
+test("detects and fixes cube mismatch for non-build prompts", () => {
+  const mismatch = __test.detectLogicalMismatchInSources(
+    "why is my cubed function wrong?",
+    { "main.py": "def cubed(x):\n  return x * 3\n" }
+  );
+  assert.equal(Boolean(mismatch), true);
+  assert.match(mismatch.matchedLine, /return x \* 3/);
+  assert.match(mismatch.fixLine, /return x \*\* 3/);
+});
+
 test("detects general knowledge prompts without code context", () => {
   assert.equal(
     __test.looksLikeGeneralKnowledgePrompt("Explain what quantum entanglement means in simple words", {}),
@@ -313,4 +323,28 @@ test("knowledge artifact normalization rejects low-relevance answers", () => {
     "How does photosynthesis work in plants?"
   );
   assert.match(relevant.assistantReply, /photosynthesis/i);
+  assert.match(relevant.assistantReply, /verification/i);
+});
+
+test("knowledge artifact normalization adds stronger verification for high-stakes prompts", () => {
+  const normalized = __test.normalizeKnowledgeArtifact(
+    {
+      assistantReply:
+        "Tax residency generally depends on days present, ties to the country, and local tax rules.",
+      rationale: "This is a jurisdiction-sensitive tax concept.",
+    },
+    "How does tax residency usually work?"
+  );
+  assert.match(normalized.assistantReply, /qualified professional|authoritative guidance/i);
+});
+
+test("knowledge artifact normalization rejects low-specificity generic answers", () => {
+  const normalized = __test.normalizeKnowledgeArtifact(
+    {
+      assistantReply: "It depends, provide more details.",
+      rationale: "Generic response.",
+    },
+    "Explain dark matter evidence."
+  );
+  assert.match(normalized.assistantReply, /need one extra detail/i);
 });
