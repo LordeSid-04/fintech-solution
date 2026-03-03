@@ -1,6 +1,6 @@
 # CodexGo Setup and Run Guide
 
-This guide is intended for graders to reproduce the application in a clean environment.
+This guide is intended to reproduce the application in a clean environment.
 
 ## 1) Prerequisites
 
@@ -65,7 +65,7 @@ npm run dev
 
 Expected: app available at `http://localhost:3000`.
 
-## 6) Smoke run
+## 6) Trial run
 
 1. Open `/auth`, create/login account.
 2. Open `/confidence`, set mode (0, 50, or 100).
