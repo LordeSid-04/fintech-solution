@@ -110,7 +110,7 @@ export async function signup(payload: SignupPayload): Promise<AuthUser> {
     throw error;
   }
   const data = await readAuthPayload<{ user?: AuthUser; error?: string }>(response);
-  if (!response.ok || !data.user) {
+  if (!response.ok || !data?.user) {
     throw new Error(data?.error || `Signup failed (status ${response.status}).`);
   }
   return data.user;
@@ -132,7 +132,7 @@ export async function login(email: string, password: string): Promise<{ user: Au
     throw error;
   }
   const data = await readAuthPayload<{ user?: AuthUser; session?: AuthSession; error?: string }>(response);
-  if (!response.ok || !data.user || !data.session) {
+  if (!response.ok || !data?.user || !data?.session) {
     throw new Error(data?.error || `Login failed (status ${response.status}).`);
   }
   return { user: data.user, session: data.session };
