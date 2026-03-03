@@ -20,6 +20,12 @@ export type SignupPayload = {
   password: string;
 };
 
+type BackendUrlRuntime = {
+  configuredUrl?: string;
+  protocol?: string;
+  hostname?: string;
+};
+
 export function isNtuStudentEmail(email: string): boolean {
   return email.trim().toLowerCase().endsWith("@e.ntu.edu.sg");
 }
@@ -42,13 +48,40 @@ export function validateSignupPayload(payload: SignupPayload): string {
   return "";
 }
 
+export function resolveBackendBaseUrl(runtime?: BackendUrlRuntime): string {
+  const configuredUrl = (runtime?.configuredUrl ?? process.env.NEXT_PUBLIC_BACKEND_URL ?? "").trim();
+  if (configuredUrl) {
+    return configuredUrl.replace(/\/+$/, "");
+  }
+  const protocol =
+    runtime?.protocol ?? (typeof window !== "undefined" ? window.location.protocol : "http:");
+  const hostname = runtime?.hostname ?? (typeof window !== "undefined" ? window.location.hostname : "");
+  if (hostname && hostname !== "localhost" && hostname !== "127.0.0.1") {
+    return `${protocol}//${hostname}:4000`;
+  }
+  return "http://localhost:4000";
+}
+
+function networkErrorMessage(action: "signup" | "login", baseUrl: string): string {
+  const actionLabel = action === "signup" ? "Sign up" : "Login";
+  return `${actionLabel} could not reach the backend at ${baseUrl}. If you are on another device, set NEXT_PUBLIC_BACKEND_URL to a reachable backend URL (for example your host machine LAN IP).`;
+}
+
 export async function signup(payload: SignupPayload): Promise<AuthUser> {
-  const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:4000";
-  const response = await fetch(`${baseUrl}/api/auth/signup`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  const baseUrl = resolveBackendBaseUrl();
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api/auth/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error(networkErrorMessage("signup", baseUrl));
+    }
+    throw error;
+  }
   const data = (await response.json()) as { user?: AuthUser; error?: string };
   if (!response.ok || !data.user) {
     throw new Error(data.error || "Signup failed.");
@@ -57,12 +90,20 @@ export async function signup(payload: SignupPayload): Promise<AuthUser> {
 }
 
 export async function login(email: string, password: string): Promise<{ user: AuthUser; session: AuthSession }> {
-  const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:4000";
-  const response = await fetch(`${baseUrl}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
+  const baseUrl = resolveBackendBaseUrl();
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error(networkErrorMessage("login", baseUrl));
+    }
+    throw error;
+  }
   const data = (await response.json()) as { user?: AuthUser; session?: AuthSession; error?: string };
   if (!response.ok || !data.user || !data.session) {
     throw new Error(data.error || "Login failed.");
