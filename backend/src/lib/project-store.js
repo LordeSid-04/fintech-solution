@@ -42,7 +42,23 @@ function listProjects(email, projectsPath = DEFAULT_PROJECTS_PATH) {
   return projects.sort((a, b) => (a.savedAt < b.savedAt ? 1 : -1));
 }
 
-function upsertProject({ email, projectId, name, files }, projectsPath = DEFAULT_PROJECTS_PATH) {
+function sanitizeVersions(versions) {
+  if (!Array.isArray(versions)) return [];
+  return versions
+    .filter((entry) => entry && typeof entry === "object" && entry.files && typeof entry.files === "object")
+    .slice(0, 30)
+    .map((entry) => ({
+      versionId: String(entry.versionId || "").trim() || `version-${Date.now()}`,
+      createdAt: String(entry.createdAt || "").trim() || new Date().toISOString(),
+      source: String(entry.source || "manual-save"),
+      mode: String(entry.mode || "pair"),
+      confidencePercent: Number(entry.confidencePercent) || 50,
+      files: entry.files,
+      note: entry.note ? String(entry.note) : "",
+    }));
+}
+
+function upsertProject({ email, projectId, name, files, versions }, projectsPath = DEFAULT_PROJECTS_PATH) {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) {
     return { ok: false, error: "Email is required." };
@@ -66,6 +82,7 @@ function upsertProject({ email, projectId, name, files }, projectsPath = DEFAULT
     name: trimmedName,
     savedAt: now,
     files,
+    versions: sanitizeVersions(versions),
   };
   const next = [project, ...existing.filter((item) => item.id !== id)].slice(0, 50);
   all[normalizedEmail] = next;

@@ -3,6 +3,17 @@ export type StoredProject = {
   name: string;
   savedAt: string;
   files: Record<string, string>;
+  versions?: ProjectVersion[];
+};
+
+export type ProjectVersion = {
+  versionId: string;
+  createdAt: string;
+  source: "manual-save" | "ai-run" | "restore";
+  mode: "assist" | "pair" | "autopilot";
+  confidencePercent: number;
+  files: Record<string, string>;
+  note?: string;
 };
 
 type AuthSessionPayload = {
@@ -48,6 +59,7 @@ export async function saveProjectForActiveUser(input: {
   projectId: string;
   name: string;
   files: Record<string, string>;
+  versions?: ProjectVersion[];
 }): Promise<StoredProject> {
   const email = getActiveUserEmail();
   if (!email) {
@@ -62,6 +74,7 @@ export async function saveProjectForActiveUser(input: {
       projectId: input.projectId,
       name: input.name,
       files: input.files,
+      versions: input.versions ?? [],
     }),
   });
   const payload = (await response.json()) as { project?: StoredProject; error?: string };

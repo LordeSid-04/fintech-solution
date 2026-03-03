@@ -11,7 +11,11 @@ import { TopBar } from "@/components/workspace/TopBar";
 import { hasStoredSession } from "@/lib/auth";
 import type { DiffFinding, MockRunResult, UnifiedDiffLine } from "@/lib/mockRun";
 import type { GovernedRunResult } from "@/lib/backend-run";
-import { fetchProjectsForActiveUser, saveProjectForActiveUser } from "@/lib/projects";
+import {
+  fetchProjectsForActiveUser,
+  saveProjectForActiveUser,
+  type ProjectVersion,
+} from "@/lib/projects";
 import { useGovernance } from "@/lib/use-governance";
 import { isCompanionOnlyConfidence } from "@/lib/assist-companion";
 import { runCodeInBrowser, type RunCodeResult } from "@/lib/code-runner";
@@ -58,20 +62,65 @@ function generateUniqueProjectId(existingIds: Set<string>) {
   return candidate;
 }
 
+function cloneFiles(files: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(files).map(([path, content]) => [path, content]));
+}
+
+function buildVersionId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `version-${crypto.randomUUID()}`;
+  }
+  return `version-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+}
+
+function createVersionSnapshot(input: {
+  source: ProjectVersion["source"];
+  mode: ProjectVersion["mode"];
+  confidencePercent: number;
+  files: Record<string, string>;
+  note?: string;
+}): ProjectVersion {
+  return {
+    versionId: buildVersionId(),
+    createdAt: new Date().toISOString(),
+    source: input.source,
+    mode: input.mode,
+    confidencePercent: input.confidencePercent,
+    files: cloneFiles(input.files),
+    note: input.note,
+  };
+}
+
 function loadSelectedProjectSnapshot(selectedProjectId: string) {
   if (typeof window === "undefined" || selectedProjectId === "new-project") {
-    return { files: createEmptyProjectFiles(), selectedFile: "", projectName: "New Project" };
+    return {
+      files: createEmptyProjectFiles(),
+      selectedFile: "",
+      projectName: "New Project",
+      versions: [] as ProjectVersion[],
+    };
   }
   const userId = localStorage.getItem("codexai.activeUser") ?? "demo-user";
   const projectsByUser = JSON.parse(localStorage.getItem("codexai.projects") ?? "{}") as Record<
     string,
-    Array<{ id?: string; name: string; savedAt: string; files: Record<string, string> }>
+    Array<{
+      id?: string;
+      name: string;
+      savedAt: string;
+      files: Record<string, string>;
+      versions?: ProjectVersion[];
+    }>
   >;
   const selectedProject = (projectsByUser[userId] ?? []).find(
     (project) => (project.id ?? `project-${project.savedAt}`) === selectedProjectId
   );
   if (!selectedProject) {
-    return { files: createEmptyProjectFiles(), selectedFile: "", projectName: "New Project" };
+    return {
+      files: createEmptyProjectFiles(),
+      selectedFile: "",
+      projectName: "New Project",
+      versions: [] as ProjectVersion[],
+    };
   }
   const loadedFiles = Object.keys(selectedProject.files).length
     ? selectedProject.files
@@ -80,6 +129,7 @@ function loadSelectedProjectSnapshot(selectedProjectId: string) {
     files: loadedFiles,
     selectedFile: Object.keys(loadedFiles)[0] ?? "",
     projectName: selectedProject.name,
+    versions: Array.isArray(selectedProject.versions) ? selectedProject.versions.slice(0, 30) : [],
   };
 }
 
@@ -103,6 +153,10 @@ export default function WorkspacePage() {
   const [isLeavePromptOpen, setIsLeavePromptOpen] = useState(false);
   const [isDeviceSavePromptOpen, setIsDeviceSavePromptOpen] = useState(false);
   const [generatedFilesThisRun, setGeneratedFilesThisRun] = useState<string[]>([]);
+  const [versionHistory, setVersionHistory] = useState<ProjectVersion[]>(
+    initialProjectSnapshot.versions
+  );
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [riskGatePrompt, setRiskGatePrompt] = useState<{
     isOpen: boolean;
     gateDecision: "ALLOWED" | "NEEDS_APPROVAL" | "BLOCKED";
@@ -148,6 +202,7 @@ export default function WorkspacePage() {
           : createEmptyProjectFiles();
         setProjectFiles(loadedFiles);
         setSelectedFile(Object.keys(loadedFiles)[0] ?? "");
+        setVersionHistory(Array.isArray(selectedProject.versions) ? selectedProject.versions.slice(0, 30) : []);
       } catch {
         // Keep local snapshot if backend fetch fails.
       }
@@ -225,7 +280,18 @@ export default function WorkspacePage() {
     const finalPreview = governed.artifacts?.diff?.previewHtml;
     if (typeof finalPreview === "string" && finalPreview.trim()) setPreviewHtml(finalPreview);
     if (!companionOnly && generatedFiles && Object.keys(generatedFiles).length > 0) {
-      setProjectFiles((prev) => ({ ...prev, ...generatedFiles }));
+      setProjectFiles((prev) => {
+        const nextFiles = { ...prev, ...generatedFiles };
+        const snapshot = createVersionSnapshot({
+          source: "ai-run",
+          mode,
+          confidencePercent,
+          files: nextFiles,
+          note: `Generated ${Object.keys(generatedFiles).length} file(s)`,
+        });
+        setVersionHistory((prevHistory) => [snapshot, ...prevHistory].slice(0, 30));
+        return nextFiles;
+      });
       if (!selectedFile) {
         const firstGeneratedFile = Object.keys(generatedFiles)[0];
         if (firstGeneratedFile) setSelectedFile(firstGeneratedFile);
@@ -560,14 +626,35 @@ export default function WorkspacePage() {
     const userId = localStorage.getItem("codexai.activeUser") ?? "demo-user";
     const projectsByUser = JSON.parse(localStorage.getItem("codexai.projects") ?? "{}") as Record<
       string,
-      Array<{ id: string; name: string; savedAt: string; files: Record<string, string> }>
+      Array<{
+        id: string;
+        name: string;
+        savedAt: string;
+        files: Record<string, string>;
+        versions?: ProjectVersion[];
+      }>
     >;
     const userProjects = projectsByUser[userId] ?? [];
     const now = new Date().toISOString();
     const existingIds = new Set(userProjects.map((project) => project.id));
     const nextProjectId =
       selectedProjectId === "new-project" ? generateUniqueProjectId(existingIds) : selectedProjectId;
-    const nextProject = { id: nextProjectId, name: projectDisplayName, savedAt: now, files: projectFiles };
+    const manualSnapshot = createVersionSnapshot({
+      source: "manual-save",
+      mode,
+      confidencePercent,
+      files: projectFiles,
+      note: "Manual save",
+    });
+    const nextVersions = [manualSnapshot, ...versionHistory].slice(0, 30);
+    setVersionHistory(nextVersions);
+    const nextProject = {
+      id: nextProjectId,
+      name: projectDisplayName,
+      savedAt: now,
+      files: projectFiles,
+      versions: nextVersions,
+    };
     projectsByUser[userId] = [nextProject, ...userProjects.filter((p) => p.id !== nextProjectId)].slice(0, 20);
     localStorage.setItem("codexai.projects", JSON.stringify(projectsByUser));
     if (selectedProjectId !== nextProjectId) setSelectedProjectId(nextProjectId);
@@ -577,6 +664,7 @@ export default function WorkspacePage() {
         projectId: nextProjectId,
         name: projectDisplayName,
         files: projectFiles,
+        versions: nextVersions,
       });
     } catch {
       // Local save already completed; backend sync can be retried on next save.
@@ -593,6 +681,25 @@ export default function WorkspacePage() {
     anchor.download = `${projectDisplayName.toLowerCase().replace(/\s+/g, "-") || "workspace-project"}.zip`;
     anchor.click();
     URL.revokeObjectURL(objectUrl);
+  };
+
+  const restoreVersion = (version: ProjectVersion) => {
+    const restoredFiles = cloneFiles(version.files);
+    setProjectFiles(restoredFiles);
+    const firstPath = Object.keys(restoredFiles)[0] ?? "";
+    setSelectedFile(firstPath);
+    if (firstPath) {
+      setIsEditorOpen(true);
+    }
+    const restoreSnapshot = createVersionSnapshot({
+      source: "restore",
+      mode,
+      confidencePercent,
+      files: restoredFiles,
+      note: `Restored ${new Date(version.createdAt).toLocaleString()}`,
+    });
+    setVersionHistory((prev) => [restoreSnapshot, ...prev].slice(0, 30));
+    setIsHistoryOpen(false);
   };
 
   if (!sessionChecked) {
@@ -623,6 +730,7 @@ export default function WorkspacePage() {
           mode={mode}
           confidencePercent={confidencePercent}
           onOpenPermissions={() => setIsPermissionsOpen(true)}
+          onOpenHistory={() => setIsHistoryOpen(true)}
         />
 
         <section
@@ -815,6 +923,55 @@ export default function WorkspacePage() {
               >
                 Discard Generated Code
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isHistoryOpen ? (
+        <div className="fixed inset-0 z-[73] grid place-items-center bg-black/70 p-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-violet-300/30 bg-[#090611] p-5 shadow-[0_0_32px_rgba(168,85,247,0.22)]">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-lg font-semibold text-violet-100">Version History</h3>
+              <button
+                type="button"
+                onClick={() => setIsHistoryOpen(false)}
+                className="rounded-full border border-white/20 px-3 py-1 text-xs text-white/80 hover:bg-white/[0.08]"
+              >
+                Close
+              </button>
+            </div>
+            <p className="mt-2 text-sm text-white/75">
+              Restore any snapshot created in 0%, 50%, or 100% confidence runs.
+            </p>
+            <div className="mt-4 max-h-[420px] space-y-2 overflow-auto rounded-lg border border-white/10 bg-black/25 p-3">
+              {versionHistory.length ? (
+                versionHistory.map((version) => (
+                  <div
+                    key={version.versionId}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/12 bg-black/35 p-3"
+                  >
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-violet-100/90">
+                        {version.source.replace("-", " ")} · {version.mode} ({version.confidencePercent}%)
+                      </p>
+                      <p className="text-xs text-white/70">
+                        {new Date(version.createdAt).toLocaleString()} · {Object.keys(version.files).length} files
+                      </p>
+                      {version.note ? <p className="mt-1 text-xs text-white/60">{version.note}</p> : null}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => restoreVersion(version)}
+                      className="rounded-full border border-emerald-300/35 bg-emerald-300/12 px-3 py-1 text-xs font-medium text-emerald-100 hover:bg-emerald-300/20"
+                    >
+                      Restore
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-white/70">No snapshots yet. Run AI once or save your project.</p>
+              )}
             </div>
           </div>
         </div>

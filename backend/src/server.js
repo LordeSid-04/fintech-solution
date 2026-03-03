@@ -113,6 +113,7 @@ const server = http.createServer(async (req, res) => {
         projectId: body.projectId,
         name: body.name,
         files: body.files,
+        versions: body.versions,
       });
       if (!result.ok) {
         sendJson(res, 400, { error: result.error });

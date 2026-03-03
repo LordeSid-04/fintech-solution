@@ -5,6 +5,7 @@ type TopBarProps = {
   mode: GovernanceMode;
   confidencePercent: number;
   onOpenPermissions: () => void;
+  onOpenHistory: () => void;
 };
 
 const modeLabel: Record<GovernanceMode, string> = {
@@ -17,6 +18,7 @@ export function TopBar({
   mode,
   confidencePercent,
   onOpenPermissions,
+  onOpenHistory,
 }: TopBarProps) {
   return (
     <header className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 backdrop-blur-sm">
@@ -26,6 +28,13 @@ export function TopBar({
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenHistory}
+            className="rounded-full border border-white/20 bg-white/[0.03] px-3 py-1 text-xs font-medium text-white/85 transition hover:bg-white/[0.08]"
+          >
+            History
+          </button>
           <button
             type="button"
             onClick={onOpenPermissions}
