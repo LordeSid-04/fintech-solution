@@ -22,7 +22,7 @@ It combines multi-agent orchestration, security scanning, risk scoring, human ap
 - **Human control paths**: two-person approvals and break-glass safeguards for high-risk actions.
 - **Traceable operations**: append-only ledger events with hash-linked integrity fields.
 - **Streamed UX**: real-time stage events, generated files, preview updates, and governance feedback.
-- **Version history + restore**: snapshot and restore workspace state across `assist` (0%), `pair` (50%), and `autopilot` (100%) runs.
+- **Version history + restore**: snapshot and restore workspace state per project across `assist` (0%), `pair` (50%), and `autopilot` (100%) runs; restore writes the selected snapshot back to that project state.
 
 ---
 

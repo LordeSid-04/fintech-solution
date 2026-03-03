@@ -1,7 +1,7 @@
 "use client";
 
 import JSZip from "jszip";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { AIPanel } from "@/components/workspace/AIPanel";
@@ -164,7 +164,7 @@ export default function WorkspacePage() {
     blockReason?: string;
   } | null>(null);
 
-  const [projectDisplayName] = useState(initialProjectSnapshot.projectName);
+  const [projectDisplayName, setProjectDisplayName] = useState(initialProjectSnapshot.projectName);
   const filePaths = useMemo(() => Object.keys(projectFiles), [projectFiles]);
   const companionOnly = isCompanionOnlyConfidence(confidencePercent);
   const [fileHandlesByPath, setFileHandlesByPath] = useState<Record<string, WritableFileHandle>>({});
@@ -179,8 +179,14 @@ export default function WorkspacePage() {
   const [fileExplorerWidth, setFileExplorerWidth] = useState(220);
   const [isResizingPanel, setIsResizingPanel] = useState(false);
   const [isResizingExplorer, setIsResizingExplorer] = useState(false);
+  const [editorRevision, setEditorRevision] = useState(0);
   const layoutSectionRef = useRef<HTMLElement | null>(null);
   const typingTimerIdsRef = useRef<number[]>([]);
+
+  const cancelTypingAnimations = useCallback(() => {
+    typingTimerIdsRef.current.forEach((id) => window.clearInterval(id));
+    typingTimerIdsRef.current = [];
+  }, []);
 
   useEffect(() => {
     if (!hasStoredSession()) {
@@ -202,6 +208,7 @@ export default function WorkspacePage() {
           : createEmptyProjectFiles();
         setProjectFiles(loadedFiles);
         setSelectedFile(Object.keys(loadedFiles)[0] ?? "");
+        setProjectDisplayName(selectedProject.name || "New Project");
         setVersionHistory(Array.isArray(selectedProject.versions) ? selectedProject.versions.slice(0, 30) : []);
       } catch {
         // Keep local snapshot if backend fetch fails.
@@ -209,6 +216,20 @@ export default function WorkspacePage() {
     };
     void hydrateProjectFromBackend();
   }, [selectedProjectId, sessionChecked]);
+
+  useEffect(() => {
+    cancelTypingAnimations();
+    setProjectFiles(cloneFiles(initialProjectSnapshot.files));
+    setSelectedFile(initialProjectSnapshot.selectedFile);
+    setVersionHistory(initialProjectSnapshot.versions);
+    setProjectDisplayName(initialProjectSnapshot.projectName);
+    setFileHandlesByPath({});
+    setGeneratedFilesThisRun([]);
+    setPreviewHtml("");
+    setDiffLines([]);
+    setFindings([]);
+    setEditorRevision((prev) => prev + 1);
+  }, [cancelTypingAnimations, initialProjectSnapshot]);
 
   useEffect(() => {
     if (!sessionChecked || mode === "autopilot") {
@@ -265,8 +286,7 @@ export default function WorkspacePage() {
   }, [previewUrl]);
 
   const handleRunStart = () => {
-    typingTimerIdsRef.current.forEach((id) => window.clearInterval(id));
-    typingTimerIdsRef.current = [];
+    cancelTypingAnimations();
     setGeneratedFilesThisRun([]);
     setRiskGatePrompt(null);
     setPreviewHtml("");
@@ -622,7 +642,13 @@ export default function WorkspacePage() {
     return runCodeInBrowser(path, content);
   };
 
-  const saveProjectLocally = async () => {
+  const persistProjectState = async ({
+    files,
+    versions,
+  }: {
+    files: Record<string, string>;
+    versions: ProjectVersion[];
+  }) => {
     const userId = localStorage.getItem("codexai.activeUser") ?? "demo-user";
     const projectsByUser = JSON.parse(localStorage.getItem("codexai.projects") ?? "{}") as Record<
       string,
@@ -639,21 +665,12 @@ export default function WorkspacePage() {
     const existingIds = new Set(userProjects.map((project) => project.id));
     const nextProjectId =
       selectedProjectId === "new-project" ? generateUniqueProjectId(existingIds) : selectedProjectId;
-    const manualSnapshot = createVersionSnapshot({
-      source: "manual-save",
-      mode,
-      confidencePercent,
-      files: projectFiles,
-      note: "Manual save",
-    });
-    const nextVersions = [manualSnapshot, ...versionHistory].slice(0, 30);
-    setVersionHistory(nextVersions);
     const nextProject = {
       id: nextProjectId,
       name: projectDisplayName,
       savedAt: now,
-      files: projectFiles,
-      versions: nextVersions,
+      files,
+      versions,
     };
     projectsByUser[userId] = [nextProject, ...userProjects.filter((p) => p.id !== nextProjectId)].slice(0, 20);
     localStorage.setItem("codexai.projects", JSON.stringify(projectsByUser));
@@ -663,12 +680,25 @@ export default function WorkspacePage() {
       await saveProjectForActiveUser({
         projectId: nextProjectId,
         name: projectDisplayName,
-        files: projectFiles,
-        versions: nextVersions,
+        files,
+        versions,
       });
     } catch {
-      // Local save already completed; backend sync can be retried on next save.
+      // Local save already completed; backend sync can be retried later.
     }
+  };
+
+  const saveProjectLocally = async () => {
+    const manualSnapshot = createVersionSnapshot({
+      source: "manual-save",
+      mode,
+      confidencePercent,
+      files: projectFiles,
+      note: "Manual save",
+    });
+    const nextVersions = [manualSnapshot, ...versionHistory].slice(0, 30);
+    setVersionHistory(nextVersions);
+    await persistProjectState({ files: projectFiles, versions: nextVersions });
   };
 
   const downloadProjectToDevice = async () => {
@@ -684,10 +714,12 @@ export default function WorkspacePage() {
   };
 
   const restoreVersion = (version: ProjectVersion) => {
+    cancelTypingAnimations();
     const restoredFiles = cloneFiles(version.files);
     setProjectFiles(restoredFiles);
     const firstPath = Object.keys(restoredFiles)[0] ?? "";
     setSelectedFile(firstPath);
+    setEditorRevision((prev) => prev + 1);
     if (firstPath) {
       setIsEditorOpen(true);
     }
@@ -698,7 +730,9 @@ export default function WorkspacePage() {
       files: restoredFiles,
       note: `Restored ${new Date(version.createdAt).toLocaleString()}`,
     });
-    setVersionHistory((prev) => [restoreSnapshot, ...prev].slice(0, 30));
+    const nextVersions = [restoreSnapshot, ...versionHistory].slice(0, 30);
+    setVersionHistory(nextVersions);
+    void persistProjectState({ files: restoredFiles, versions: nextVersions });
     setIsHistoryOpen(false);
   };
 
@@ -805,6 +839,7 @@ export default function WorkspacePage() {
               void handleSaveSelectedFileAs(path, content);
             }}
             onRenameSelectedFile={handleRenameSelectedFile}
+            editorRevision={editorRevision}
             isResizable
             onResizeStart={() => setIsResizingPanel(true)}
           />

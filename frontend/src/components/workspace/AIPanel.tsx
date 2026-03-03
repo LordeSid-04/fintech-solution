@@ -52,6 +52,7 @@ type AIPanelProps = {
   onSaveSelectedFile?: (path: string, content: string) => Promise<void> | void;
   onSaveSelectedFileAs?: (path: string, content: string) => Promise<void> | void;
   onRenameSelectedFile?: (currentPath: string, nextPath: string) => void;
+  editorRevision?: number;
   onRunGenerated: (result: MockRunResult) => void;
   onGeneratedFiles?: (files: Record<string, string>) => void;
   onGeneratedPreview?: (html: string) => void;
@@ -143,6 +144,7 @@ export function AIPanel({
   onSaveSelectedFile,
   onSaveSelectedFileAs,
   onRenameSelectedFile,
+  editorRevision = 0,
   onRunGenerated,
   onGeneratedFiles,
   onGeneratedPreview,
@@ -1277,6 +1279,7 @@ export function AIPanel({
                         ) : null}
                       </div>
                       <CodeEditor
+                        key={`${selectedFile}:${editorRevision}`}
                         path={selectedFile}
                         value={fileContent}
                         onChange={onFileContentChange}

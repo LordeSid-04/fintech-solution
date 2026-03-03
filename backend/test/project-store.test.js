@@ -55,3 +55,62 @@ test("project store persists bounded version history snapshots", () => {
   assert.equal(saveResult.project.versions.length, 1);
   assert.equal(saveResult.project.versions[0].versionId, "v1");
 });
+
+test("project version history remains scoped per project id", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "project-store-scope-"));
+  const projectsPath = path.join(tempDir, "projects.json");
+  const email = "student@e.ntu.edu.sg";
+
+  const first = upsertProject(
+    {
+      email,
+      projectId: "project-a",
+      name: "Project A",
+      files: { "src/a.ts": "console.log('a')" },
+      versions: [
+        {
+          versionId: "a-v1",
+          createdAt: "2026-01-01T10:00:00.000Z",
+          source: "manual-save",
+          mode: "pair",
+          confidencePercent: 50,
+          files: { "src/a.ts": "console.log('a')" },
+        },
+      ],
+    },
+    projectsPath
+  );
+  assert.equal(first.ok, true);
+
+  const second = upsertProject(
+    {
+      email,
+      projectId: "project-b",
+      name: "Project B",
+      files: { "src/b.ts": "console.log('b')" },
+      versions: [
+        {
+          versionId: "b-v1",
+          createdAt: "2026-01-02T10:00:00.000Z",
+          source: "ai-run",
+          mode: "autopilot",
+          confidencePercent: 100,
+          files: { "src/b.ts": "console.log('b')" },
+        },
+      ],
+    },
+    projectsPath
+  );
+  assert.equal(second.ok, true);
+
+  const projects = listProjects(email, projectsPath);
+  const projectA = projects.find((item) => item.id === "project-a");
+  const projectB = projects.find((item) => item.id === "project-b");
+
+  assert.ok(projectA);
+  assert.ok(projectB);
+  assert.equal(projectA.versions.length, 1);
+  assert.equal(projectA.versions[0].versionId, "a-v1");
+  assert.equal(projectB.versions.length, 1);
+  assert.equal(projectB.versions[0].versionId, "b-v1");
+});
