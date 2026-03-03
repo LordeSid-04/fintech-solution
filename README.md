@@ -24,6 +24,7 @@ It combines multi-agent orchestration, security scanning, risk scoring, human ap
 - **Streamed UX**: real-time stage events, generated files, preview updates, and governance feedback.
 - **Version history + restore**: snapshot and restore workspace state per project across `assist` (0%), `pair` (50%), and `autopilot` (100%) runs; restore writes the selected snapshot back to that project state.
 - **Domain-aware answer quality gates**: non-build suggestions are relevance-checked against the user prompt across coding and general-knowledge topics, with explicit uncertainty/clarification prompts instead of overconfident off-topic answers.
+- **Workspace file operations**: create, open, rename, save, and delete files/folders directly in the file explorer across all confidence modes.
 
 ---
 

@@ -1,10 +1,12 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { FileCode2, FilePlus2, FolderOpen } from "lucide-react";
+import { FileCode2, FilePlus2, FolderOpen, Trash2 } from "lucide-react";
 
 type FileExplorerProps = {
   files: string[];
   selectedFile: string;
   onSelectFile: (path: string) => void;
+  onDeleteFile: (path: string) => void;
+  onDeleteFolder: (path: string) => void;
   onCreateFile: () => void;
   onCreateFolder: () => void;
   onOpenFile: () => void;
@@ -21,6 +23,8 @@ export const FileExplorer = memo(function FileExplorer({
   files,
   selectedFile,
   onSelectFile,
+  onDeleteFile,
+  onDeleteFolder,
   onCreateFile,
   onCreateFolder,
   onOpenFile,
@@ -105,23 +109,42 @@ export const FileExplorer = memo(function FileExplorer({
           const isFolderMarker = path.endsWith("/.gitkeep");
           const label = isFolderMarker ? path.replace(/\/\.gitkeep$/, "/") : path;
           return (
-            <button
+            <div
               key={path}
-              type="button"
-              onClick={() => onSelectFile(path)}
-              className={`block w-full truncate rounded px-2 py-1 text-left ${
-                isActive
-                  ? "bg-violet-300/15 text-violet-100"
-                  : "text-white/80 hover:bg-white/[0.05]"
+              className={`flex items-center justify-between gap-1 rounded ${
+                isActive ? "bg-violet-300/15" : "hover:bg-white/[0.05]"
               }`}
-              style={{ paddingLeft: `${8 + depth * 12}px` }}
-              title={path}
             >
-              <span className="inline-flex items-center gap-2">
-                {isFolderMarker ? <FolderOpen className="h-3.5 w-3.5" /> : <FileCode2 className="h-3.5 w-3.5" />}
-                <span className="truncate">{label}</span>
-              </span>
-            </button>
+              <button
+                type="button"
+                onClick={() => onSelectFile(path)}
+                className={`block min-w-0 flex-1 truncate px-2 py-1 text-left ${
+                  isActive ? "text-violet-100" : "text-white/80"
+                }`}
+                style={{ paddingLeft: `${8 + depth * 12}px` }}
+                title={path}
+              >
+                <span className="inline-flex items-center gap-2">
+                  {isFolderMarker ? <FolderOpen className="h-3.5 w-3.5" /> : <FileCode2 className="h-3.5 w-3.5" />}
+                  <span className="truncate">{label}</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isFolderMarker) {
+                    onDeleteFolder(path);
+                  } else {
+                    onDeleteFile(path);
+                  }
+                }}
+                className="mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-white/50 hover:bg-white/[0.08] hover:text-rose-200"
+                title={isFolderMarker ? "Delete folder" : "Delete file"}
+                aria-label={isFolderMarker ? "Delete folder" : "Delete file"}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
           );
         })}
       </div>

@@ -614,6 +614,73 @@ export default function WorkspacePage() {
     }
   };
 
+  const handleDeleteFile = (targetPath: string) => {
+    if (!targetPath || projectFiles[targetPath] === undefined) {
+      return;
+    }
+    const okToDelete =
+      typeof window === "undefined" ? true : window.confirm(`Delete file "${targetPath}"?`);
+    if (!okToDelete) {
+      return;
+    }
+    setProjectFiles((prev) => {
+      const next = { ...prev };
+      delete next[targetPath];
+      return next;
+    });
+    setFileHandlesByPath((prev) => {
+      if (!prev[targetPath]) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[targetPath];
+      return next;
+    });
+    if (selectedFile === targetPath) {
+      const fallbackPath = filePaths.filter((path) => path !== targetPath)[0] ?? "";
+      setSelectedFile(fallbackPath);
+    }
+  };
+
+  const handleDeleteFolder = (folderMarkerPath: string) => {
+    const folderPrefix = folderMarkerPath.replace(/\/\.gitkeep$/, "/");
+    if (!folderPrefix || folderPrefix === folderMarkerPath) {
+      return;
+    }
+    const pathsToDelete = filePaths.filter(
+      (path) => path === folderMarkerPath || path.startsWith(folderPrefix)
+    );
+    if (!pathsToDelete.length) {
+      return;
+    }
+    const okToDelete =
+      typeof window === "undefined"
+        ? true
+        : window.confirm(`Delete folder "${folderPrefix}" and ${pathsToDelete.length} item(s)?`);
+    if (!okToDelete) {
+      return;
+    }
+    const toDeleteSet = new Set(pathsToDelete);
+    setProjectFiles((prev) => {
+      const next = { ...prev };
+      pathsToDelete.forEach((path) => {
+        delete next[path];
+      });
+      return next;
+    });
+    setFileHandlesByPath((prev) => {
+      const next = { ...prev };
+      pathsToDelete.forEach((path) => {
+        delete next[path];
+      });
+      return next;
+    });
+    if (toDeleteSet.has(selectedFile)) {
+      const fallbackPath = filePaths.find((path) => !toDeleteSet.has(path)) ?? "";
+      setSelectedFile(fallbackPath);
+    }
+  };
+
   const handleRunSelectedFile = async (path: string, content: string): Promise<RunCodeResult> => {
     const lower = path.toLowerCase();
     if (lower.endsWith(".html")) {
@@ -781,6 +848,8 @@ export default function WorkspacePage() {
             files={filePaths}
             selectedFile={selectedFile}
             onSelectFile={setSelectedFile}
+            onDeleteFile={handleDeleteFile}
+            onDeleteFolder={handleDeleteFolder}
             onCreateFile={() => {
               void handleCreateFile();
             }}
