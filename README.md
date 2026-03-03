@@ -210,6 +210,8 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:4000
 
 If you open the frontend from another device, do not use `localhost` for the frontend backend URL. Set `NEXT_PUBLIC_BACKEND_URL` to a backend address reachable by that device (for example `http://<your-lan-ip>:4000` or your deployed backend URL).
 
+If Vercel is stuck on an older commit, push any new commit to `main` to trigger a fresh deployment from the latest source.
+
 Open:
 
 - `http://localhost:3000/auth`
