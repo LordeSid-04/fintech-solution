@@ -1,6 +1,46 @@
 const { callCodex } = require("../lib/codex-client");
 const { toString, toStringArray, toStringRecord } = require("../lib/normalize");
 
+const KNOWLEDGE_RESPONSE_SCHEMA = {
+  name: "developer_knowledge_response",
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      assistantReply: { type: "string" },
+      rationale: { type: "string" },
+    },
+    required: ["assistantReply", "rationale"],
+  },
+};
+
+const DEVELOPER_RESPONSE_SCHEMA = {
+  name: "developer_artifact",
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      unifiedDiff: { type: "string" },
+      filesTouched: { type: "array", items: { type: "string" } },
+      rationale: { type: "string" },
+      generatedFiles: {
+        type: "object",
+        additionalProperties: { type: "string" },
+      },
+      previewHtml: { type: "string" },
+      assistantReply: { type: "string" },
+    },
+    required: [
+      "unifiedDiff",
+      "filesTouched",
+      "rationale",
+      "generatedFiles",
+      "previewHtml",
+      "assistantReply",
+    ],
+  },
+};
+
 function isBuildPrompt(prompt) {
   const text = String(prompt || "").toLowerCase();
   const buildKeywords = [
@@ -1153,7 +1193,7 @@ function pickLikelyTargetFiles(currentFiles = {}, limit = 6) {
   return selected.slice(0, limit);
 }
 
-function normalizeDeveloperArtifact(raw, userRequest) {
+function normalizeDeveloperArtifact(raw, userRequest, modelText = "") {
   const pickText = (value, fallback) => {
     if (typeof value === "string" && value.trim()) return value;
     if (value && typeof value === "object") return JSON.stringify(value);
@@ -1182,7 +1222,8 @@ function normalizeDeveloperArtifact(raw, userRequest) {
       raw?.assistantReply,
       isBuildPrompt(userRequest)
         ? "I generated files based on your exact app request."
-        : "I can help with explanations, planning, or code changes. Tell me what you want to do."
+        : toString(modelText, "").trim() ||
+            "I can help with explanations, planning, or code changes. Tell me what you want to do."
     ),
   };
 }
@@ -1211,8 +1252,12 @@ async function runDeveloperAgent({
       agentRole: "DEVELOPER",
       systemPrompt: knowledgeSystemPrompt,
       userPrompt: knowledgeUserPrompt,
+      responseSchema: KNOWLEDGE_RESPONSE_SCHEMA,
     });
-    let knowledgeArtifact = normalizeKnowledgeArtifact(knowledgeCodex.parsed || {}, userRequest);
+    let knowledgeArtifact = normalizeKnowledgeArtifact(
+      knowledgeCodex.parsed || { assistantReply: knowledgeCodex.text, rationale: "" },
+      userRequest
+    );
 
     let pass = 0;
     while (pass < 2 && knowledgeArtifact.assistantReply === buildKnowledgeFallbackArtifact(userRequest).assistantReply) {
@@ -1220,8 +1265,12 @@ async function runDeveloperAgent({
         agentRole: "DEVELOPER",
         systemPrompt: knowledgeSystemPrompt,
         userPrompt: `${knowledgeUserPrompt}\n\nRefinement: increase relevance to user wording and keep factual claims conservative unless highly certain.`,
+        responseSchema: KNOWLEDGE_RESPONSE_SCHEMA,
       });
-      knowledgeArtifact = normalizeKnowledgeArtifact(knowledgeCodex.parsed || {}, userRequest);
+      knowledgeArtifact = normalizeKnowledgeArtifact(
+        knowledgeCodex.parsed || { assistantReply: knowledgeCodex.text, rationale: "" },
+        userRequest
+      );
       pass += 1;
     }
 
@@ -1270,6 +1319,7 @@ async function runDeveloperAgent({
     agentRole: "DEVELOPER",
     systemPrompt,
     userPrompt,
+    responseSchema: DEVELOPER_RESPONSE_SCHEMA,
   });
 
   const fallback = {
@@ -1280,7 +1330,7 @@ async function runDeveloperAgent({
     previewHtml: "",
     assistantReply: "",
   };
-  let normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest);
+  let normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest, codex.text);
 
   if (codeEditMode && Object.keys(normalizedArtifact.generatedFiles).length === 0) {
     const focusedPrompt = `${userPrompt}
@@ -1294,8 +1344,9 @@ Code edit enforcement:
       agentRole: "DEVELOPER",
       systemPrompt,
       userPrompt: focusedPrompt,
+      responseSchema: DEVELOPER_RESPONSE_SCHEMA,
     });
-    normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest);
+    normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest, codex.text);
   }
 
   const maxRefinementPasses = autopilotBuildMode ? 3 : 2;
@@ -1322,8 +1373,9 @@ Code edit enforcement:
       agentRole: "DEVELOPER",
       systemPrompt,
       userPrompt: correctionPrompt,
+      responseSchema: DEVELOPER_RESPONSE_SCHEMA,
     });
-    normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest);
+    normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest, codex.text);
     pass += 1;
   }
 
@@ -1430,6 +1482,7 @@ module.exports = {
     looksLikeGeneralKnowledgePrompt,
     hasKnowledgeReplyRelevance,
     normalizeKnowledgeArtifact,
+    normalizeDeveloperArtifact,
     isHighStakesKnowledgePrompt,
     isLowSpecificityKnowledgeAnswer,
     looksLikeCodeEditPrompt,

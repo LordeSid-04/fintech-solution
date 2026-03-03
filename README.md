@@ -173,6 +173,8 @@ For code-edit prompts (`pair`/`autopilot`), DEVELOPER now enforces file-level ou
 - Codex is called first with current project files and explicit edit constraints.
 - If the model returns explanation-only content, a second enforced pass requires `generatedFiles` + `filesTouched`.
 - Deterministic logical-fix fallback is only used after Codex attempts, not before.
+- Agent calls now use OpenAI Responses JSON-schema mode, with resilient parsing fallback for non-schema text.
+- Pair-mode fallback prefers actual model text over generic placeholder replies when structured parsing fails.
 
 ---
 
@@ -260,7 +262,7 @@ If Vercel is stuck on an older commit, push any new commit to `main` to trigger 
 - `OPENAI_API_KEY` (optional; enables live model calls)
 - `OPENAI_MODEL` (default: `gpt-5-codex`)
 - `OPENAI_TIMEOUT_MS`
-- `OPENAI_FAST_MODEL` (default: `gpt-4o-mini`, used by quick assist endpoint)
+- `OPENAI_FAST_MODEL` (default: `gpt-5-codex`, used by quick assist endpoint)
 - `OPENAI_FAST_TIMEOUT_MS` (default: `8000`)
 - `GOVERNOR_USE_MODEL_SUMMARY` (`false` by default for lower latency)
 - `BACKEND_PORT` (default: `4000`)

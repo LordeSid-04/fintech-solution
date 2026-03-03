@@ -287,6 +287,44 @@ function normalizeModelSuggestion(parsed, payload) {
   };
 }
 
+const QUICK_ASSIST_RESPONSE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    suggestion: { type: "string" },
+    rationale: { type: "string" },
+    relevantSnippet: { type: "string" },
+  },
+  required: ["suggestion", "rationale", "relevantSnippet"],
+};
+
+function toPartText(part) {
+  if (!part || typeof part !== "object") return "";
+  if (typeof part.text === "string") return part.text;
+  if (part.text && typeof part.text === "object" && typeof part.text.value === "string") {
+    return part.text.value;
+  }
+  if (typeof part.output_text === "string") return part.output_text;
+  if (typeof part.value === "string") return part.value;
+  return "";
+}
+
+function extractOutputText(payload) {
+  if (typeof payload?.output_text === "string" && payload.output_text.trim()) {
+    return payload.output_text;
+  }
+  const chunks = [];
+  const outputs = Array.isArray(payload?.output) ? payload.output : [];
+  outputs.forEach((item) => {
+    const content = Array.isArray(item?.content) ? item.content : [];
+    content.forEach((part) => {
+      const text = toPartText(part);
+      if (text) chunks.push(text);
+    });
+  });
+  return chunks.join("\n").trim();
+}
+
 async function getQuickAssistSuggestion(payload) {
   const key = process.env.OPENAI_API_KEY;
   if (!key) {
@@ -297,7 +335,7 @@ async function getQuickAssistSuggestion(payload) {
     return fallbackSuggestion(payload);
   }
 
-  const model = process.env.OPENAI_FAST_MODEL || "gpt-4o-mini";
+  const model = process.env.OPENAI_FAST_MODEL || process.env.OPENAI_MODEL || "gpt-5-codex";
   const systemPrompt = [
     "You are a fast assistant for code and general knowledge questions.",
     "Goal: maximize correctness and relevance for the user's exact question.",
@@ -334,6 +372,14 @@ async function getQuickAssistSuggestion(payload) {
       body: JSON.stringify({
         model,
         max_output_tokens: 420,
+        text: {
+          format: {
+            type: "json_schema",
+            name: "quick_assist_response",
+            strict: true,
+            schema: QUICK_ASSIST_RESPONSE_SCHEMA,
+          },
+        },
         input: [
           {
             role: "system",
@@ -355,14 +401,8 @@ async function getQuickAssistSuggestion(payload) {
       return fallbackSuggestion(payload);
     }
     const json = await response.json();
-    const outputText =
-      json.output_text ||
-      json.output
-        ?.flatMap((item) => item.content || [])
-        ?.map((part) => part.text || "")
-        ?.join("\n") ||
-      "";
-    const parsed = extractJsonObject(outputText);
+    const outputText = extractOutputText(json);
+    const parsed = json.output_parsed || extractJsonObject(outputText);
     if (!parsed) {
       const fallback = fallbackSuggestion(payload);
       const plain = String(outputText || "").trim();

@@ -372,3 +372,8 @@ test("knowledge artifact normalization rejects low-specificity generic answers",
   );
   assert.match(normalized.assistantReply, /need one extra detail/i);
 });
+
+test("developer artifact fallback uses model text for non-build prompts", () => {
+  const normalized = __test.normalizeDeveloperArtifact({}, "Explain recursion with a simple example", "Recursion is when a function calls itself until a base case is met.");
+  assert.match(normalized.assistantReply, /function calls itself/i);
+});

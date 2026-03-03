@@ -3,6 +3,21 @@ const { computeRiskAssessment } = require("../lib/risk-engine");
 const { decideGate } = require("../lib/policy-engine");
 const { callCodex } = require("../lib/codex-client");
 
+const GOVERNOR_SUMMARY_SCHEMA = {
+  name: "governor_summary",
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      stageName: { type: "string" },
+      riskScore: { type: "number" },
+      gateDecision: { type: "string" },
+      summary: { type: "string" },
+    },
+    required: ["summary"],
+  },
+};
+
 function buildDeterministicSummary({ gateDecision, riskTier, riskScore, findings }) {
   const topFinding = findings[0];
   if (!topFinding) {
@@ -60,6 +75,7 @@ async function runGovernorAgent({
           null,
           2
         )}\nConfidence mode: ${confidenceMode}`,
+        responseSchema: GOVERNOR_SUMMARY_SCHEMA,
       })
     : {
         parsed: {

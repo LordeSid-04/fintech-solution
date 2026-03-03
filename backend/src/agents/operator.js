@@ -1,9 +1,28 @@
 const { callCodex } = require("../lib/codex-client");
 const { toStringArray } = require("../lib/normalize");
 
+const OPERATOR_RESPONSE_SCHEMA = {
+  name: "operator_artifact",
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      deployPlan: { type: "array", items: { type: "string" } },
+      rolloutSteps: { type: "array", items: { type: "string" } },
+      rollbackPlan: { type: "array", items: { type: "string" } },
+      readinessChecks: { type: "array", items: { type: "string" } },
+    },
+    required: ["deployPlan", "rolloutSteps", "rollbackPlan", "readinessChecks"],
+  },
+};
+
 async function runOperatorAgent({ userRequest, diffArtifact }) {
-  const systemPrompt =
-    "You are OPERATOR. Return strict JSON only with keys: deployPlan, rolloutSteps, rollbackPlan, readinessChecks.";
+  const systemPrompt = [
+    "You are OPERATOR in a governed SDLC pipeline.",
+    "Output rollout/rollback and operational readiness only.",
+    "Return strict JSON only with keys: deployPlan, rolloutSteps, rollbackPlan, readinessChecks.",
+    "Always include staging-first rollout and an explicit rollback path.",
+  ].join(" ");
   const userPrompt = `Task:\n${userRequest}\n\nDiff summary:\n${JSON.stringify(
     {
       filesTouched: diffArtifact.filesTouched,
@@ -16,6 +35,7 @@ async function runOperatorAgent({ userRequest, diffArtifact }) {
     agentRole: "OPERATOR",
     systemPrompt,
     userPrompt,
+    responseSchema: OPERATOR_RESPONSE_SCHEMA,
   });
 
   const fallback = {
