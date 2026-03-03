@@ -82,6 +82,18 @@ function networkErrorMessage(action: "signup" | "login", baseUrl: string): strin
   return `${actionLabel} could not reach the backend at ${baseUrl}. Set NEXT_PUBLIC_BACKEND_URL to a reachable backend URL (LAN IP for local testing, or your deployed backend API URL).`;
 }
 
+async function readAuthPayload<T extends object>(response: Response): Promise<T | null> {
+  const raw = await response.text();
+  if (!raw.trim()) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
 export async function signup(payload: SignupPayload): Promise<AuthUser> {
   const baseUrl = resolveBackendBaseUrl();
   let response: Response;
@@ -97,9 +109,9 @@ export async function signup(payload: SignupPayload): Promise<AuthUser> {
     }
     throw error;
   }
-  const data = (await response.json()) as { user?: AuthUser; error?: string };
+  const data = await readAuthPayload<{ user?: AuthUser; error?: string }>(response);
   if (!response.ok || !data.user) {
-    throw new Error(data.error || "Signup failed.");
+    throw new Error(data?.error || `Signup failed (status ${response.status}).`);
   }
   return data.user;
 }
@@ -119,9 +131,9 @@ export async function login(email: string, password: string): Promise<{ user: Au
     }
     throw error;
   }
-  const data = (await response.json()) as { user?: AuthUser; session?: AuthSession; error?: string };
+  const data = await readAuthPayload<{ user?: AuthUser; session?: AuthSession; error?: string }>(response);
   if (!response.ok || !data.user || !data.session) {
-    throw new Error(data.error || "Login failed.");
+    throw new Error(data?.error || `Login failed (status ${response.status}).`);
   }
   return { user: data.user, session: data.session };
 }

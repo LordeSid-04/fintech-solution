@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isNtuStudentEmail,
   isSingaporeMobileNumber,
+  login,
   resolveBackendBaseUrl,
   validateSignupPayload,
 } from "@/lib/auth";
@@ -66,5 +67,31 @@ describe("auth validators", () => {
         protocol: "http:",
       })
     ).toBe("http://localhost:4000");
+  });
+});
+
+describe("auth api parsing", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns meaningful login error when response body is empty", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("", { status: 500, headers: { "Content-Type": "application/json" } }))
+    );
+    await expect(login("ma0001th@e.ntu.edu.sg", "Siddhanth$04")).rejects.toThrow(
+      "Login failed (status 500)."
+    );
+  });
+
+  it("returns meaningful login error when response body is non-JSON", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("<html>upstream error</html>", { status: 502 }))
+    );
+    await expect(login("ma0001th@e.ntu.edu.sg", "Siddhanth$04")).rejects.toThrow(
+      "Login failed (status 502)."
+    );
   });
 });
