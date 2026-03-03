@@ -14,7 +14,22 @@ function extractJsonObject(text) {
 function buildSnippet(payload) {
   const selected = (payload.selectedCode || "").trim();
   const content = (payload.fileContent || "").trim();
-  return selected || content;
+  if (selected || content) {
+    return selected || content;
+  }
+  const question = String(payload.question || "");
+  const fenced = question.match(/```(?:python|py)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]?.trim()) {
+    return fenced[1].trim();
+  }
+  const lines = question.split("\n").filter((line) => line.trim().length > 0);
+  const codeLike = lines.filter((line) =>
+    /^(def\s+\w+\(|return\b|print\(|\s{2,}|\t|[a-zA-Z_]\w*\s*=)/.test(line.trimStart())
+  );
+  if (codeLike.length >= 2) {
+    return codeLike.join("\n").trim();
+  }
+  return "";
 }
 
 function detectSquareMismatch(payload, snippet) {
@@ -39,6 +54,75 @@ function detectSquareMismatch(payload, snippet) {
   };
 }
 
+function detectCommonLogicalMismatch(payload, snippet) {
+  const question = String(payload.question || "").toLowerCase();
+  const normalized = String(snippet || "");
+  if (!normalized.trim()) return null;
+
+  const evenMismatch = normalized.match(/return\s+([a-zA-Z_][\w]*)\s*%\s*2\s*==\s*1/);
+  if (evenMismatch && /(even|is_even|iseven)/i.test(`${question}\n${normalized}`)) {
+    const variable = evenMismatch[1];
+    return {
+      suggestion: [
+        "Your even-check condition is inverted.",
+        `Use \`return ${variable} % 2 == 0\` for an even check.`,
+        "With this fix, even numbers return `True` and odd numbers return `False`.",
+      ].join(" "),
+      rationale:
+        "`% 2 == 1` checks odd numbers. For even checks, the remainder should be 0.",
+      relevantSnippet: evenMismatch[0],
+    };
+  }
+
+  const oddMismatch = normalized.match(/return\s+([a-zA-Z_][\w]*)\s*%\s*2\s*==\s*0/);
+  if (oddMismatch && /(odd|is_odd|isodd)/i.test(`${question}\n${normalized}`)) {
+    const variable = oddMismatch[1];
+    return {
+      suggestion: [
+        "Your odd-check condition is inverted.",
+        `Use \`return ${variable} % 2 == 1\` for an odd check.`,
+        "With this fix, odd numbers return `True` and even numbers return `False`.",
+      ].join(" "),
+      rationale:
+        "`% 2 == 0` checks even numbers. For odd checks, the remainder should be 1.",
+      relevantSnippet: oddMismatch[0],
+    };
+  }
+
+  const cubeMismatch = normalized.match(/return\s+([a-zA-Z_][\w]*)\s*\*\s*3/);
+  if (cubeMismatch && /(cube|cubed)/i.test(`${question}\n${normalized}`)) {
+    const variable = cubeMismatch[1];
+    return {
+      suggestion: [
+        "The function is tripling the value, not cubing it.",
+        `Replace \`${cubeMismatch[0]}\` with \`return ${variable} ** 3\`.`,
+        "Then test with input 3; a cube should be 27.",
+      ].join(" "),
+      rationale:
+        "Multiplying by 3 scales linearly. Cubing requires exponentiation (`** 3`).",
+      relevantSnippet: cubeMismatch[0],
+    };
+  }
+
+  const avgMismatch = normalized.match(/return\s+([a-zA-Z_][\w]*)\s*\+\s*([a-zA-Z_][\w]*)\s*$/m);
+  if (avgMismatch && /(average|mean)/i.test(question)) {
+    const left = avgMismatch[1];
+    const right = avgMismatch[2];
+    return {
+      suggestion: [
+        "Your average/mean logic is incomplete.",
+        `Use \`return (${left} + ${right}) / 2\` to compute the mean of two values.`,
+        "If there are more values, divide by the correct count.",
+      ].join(" "),
+      rationale:
+        "Returning only a sum does not compute an average; mean requires dividing by the number of terms.",
+      relevantSnippet: avgMismatch[0],
+    };
+  }
+
+  return null;
+}
+
 function buildHeuristicSuggestion(payload) {
   const snippet = buildSnippet(payload);
   if (!snippet) {
@@ -48,6 +132,10 @@ function buildHeuristicSuggestion(payload) {
   if (squareMismatch) {
     return squareMismatch;
   }
+  const logicalMismatch = detectCommonLogicalMismatch(payload, snippet);
+  if (logicalMismatch) {
+    return logicalMismatch;
+  }
   return null;
 }
 
@@ -55,9 +143,9 @@ function fallbackSuggestion(payload) {
   const snippet = buildSnippet(payload) || "No relevant code snippet found.";
   return {
     suggestion: [
-      "Start with one small, reversible change in the selected code path.",
-      "Then run it immediately and compare expected vs actual output.",
-      "If you share expected output, I can suggest a precise one-line fix.",
+      "Start by writing down expected behavior for one concrete input/output example.",
+      "Then compare each step of your current logic against that expected flow.",
+      "Share the expected vs actual output and I can provide a precise code-level fix.",
     ].join(" "),
     rationale:
       "Quick fallback was used because model response was unavailable. This keeps guidance fast and actionable.",
@@ -109,7 +197,7 @@ async function getQuickAssistSuggestion(payload) {
       signal: controller.signal,
       body: JSON.stringify({
         model,
-        max_output_tokens: 260,
+        max_output_tokens: 420,
         input: [
           {
             role: "system",
@@ -136,7 +224,17 @@ async function getQuickAssistSuggestion(payload) {
       "";
     const parsed = extractJsonObject(outputText);
     if (!parsed) {
-      return fallbackSuggestion(payload);
+      const fallback = fallbackSuggestion(payload);
+      const plain = String(outputText || "").trim();
+      if (plain) {
+        return {
+          suggestion: plain.slice(0, 1000),
+          rationale:
+            "Model returned plain text instead of strict JSON; parsed fallback preserved the response content.",
+          relevantSnippet: fallback.relevantSnippet,
+        };
+      }
+      return fallback;
     }
     const fallback = fallbackSuggestion(payload);
     return {

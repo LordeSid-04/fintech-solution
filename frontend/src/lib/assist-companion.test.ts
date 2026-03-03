@@ -47,4 +47,26 @@ describe("assist companion helpers", () => {
     expect(result.assistantReply).toContain("doubling");
     expect(result.assistantReply).toContain("** 2");
   });
+
+  it("detects square mismatch when code is included in question text", () => {
+    const result = buildQuickAssistResponse({
+      question: [
+        "why does this not return square?",
+        "def square(x):",
+        "  return x * 2",
+        "print(square(3))",
+      ].join("\n"),
+    });
+    expect(result.assistantReply).toContain("doubling");
+    expect(result.assistantReply).toContain("** 2");
+  });
+
+  it("detects inverted even-check logic", () => {
+    const result = buildQuickAssistResponse({
+      question: "why is my even function wrong?",
+      selectedCode: "def is_even(x):\n  return x % 2 == 1",
+    });
+    expect(result.assistantReply).toContain("inverted");
+    expect(result.assistantReply).toContain("% 2 == 0");
+  });
 });

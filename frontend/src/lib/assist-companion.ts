@@ -127,6 +127,87 @@ function scoreLine(line: string, terms: string[]): number {
   return terms.reduce((score, term) => (lower.includes(term) ? score + 1 : score), 0);
 }
 
+function extractCodeSnippetFromQuestion(question: string): string {
+  const fenced = question.match(/```(?:python|py)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]?.trim()) {
+    return fenced[1].trim();
+  }
+  const lines = question.split("\n").filter((line) => line.trim().length > 0);
+  const codeLike = lines.filter((line) =>
+    /^(def\s+\w+\(|return\b|print\(|\s{2,}|\t|[a-zA-Z_]\w*\s*=)/.test(line.trimStart())
+  );
+  if (codeLike.length >= 2) {
+    return codeLike.join("\n").trim();
+  }
+  return "";
+}
+
+function detectCommonLogicalMismatch(source: string, question: string): QuickAssistResponse | null {
+  const combined = `${question}\n${source}`;
+  const evenMismatch = source.match(/return\s+([a-zA-Z_][\w]*)\s*%\s*2\s*==\s*1/);
+  if (evenMismatch && /(even|is_even|iseven)/i.test(combined)) {
+    const variable = evenMismatch[1];
+    return {
+      assistantReply: [
+        "Your even-check condition is inverted.",
+        `Change \`${evenMismatch[0]}\` to \`return ${variable} % 2 == 0\`.`,
+        "That makes even inputs return `True` correctly.",
+      ].join(" "),
+      rationale: "`% 2 == 1` checks odd numbers; even checks should use `% 2 == 0`.",
+      highlightedSnippet: evenMismatch[0],
+      matchedTerms: ["even", "modulo"],
+    };
+  }
+
+  const oddMismatch = source.match(/return\s+([a-zA-Z_][\w]*)\s*%\s*2\s*==\s*0/);
+  if (oddMismatch && /(odd|is_odd|isodd)/i.test(combined)) {
+    const variable = oddMismatch[1];
+    return {
+      assistantReply: [
+        "Your odd-check condition is inverted.",
+        `Change \`${oddMismatch[0]}\` to \`return ${variable} % 2 == 1\`.`,
+        "That makes odd inputs return `True` correctly.",
+      ].join(" "),
+      rationale: "`% 2 == 0` checks even numbers; odd checks should use `% 2 == 1`.",
+      highlightedSnippet: oddMismatch[0],
+      matchedTerms: ["odd", "modulo"],
+    };
+  }
+
+  const cubeMismatch = source.match(/return\s+([a-zA-Z_][\w]*)\s*\*\s*3/);
+  if (cubeMismatch && /(cube|cubed)/i.test(combined)) {
+    const variable = cubeMismatch[1];
+    return {
+      assistantReply: [
+        "The function is tripling the value, not cubing it.",
+        `Change \`${cubeMismatch[0]}\` to \`return ${variable} ** 3\`.`,
+        "Then re-run with input 3; cube should be 27.",
+      ].join(" "),
+      rationale: "Cubing requires exponentiation (`** 3`), not multiplication by 3.",
+      highlightedSnippet: cubeMismatch[0],
+      matchedTerms: ["cube", "exponentiation"],
+    };
+  }
+
+  const avgMismatch = source.match(/return\s+([a-zA-Z_][\w]*)\s*\+\s*([a-zA-Z_][\w]*)\s*$/m);
+  if (avgMismatch && /(average|mean)/i.test(question)) {
+    const left = avgMismatch[1];
+    const right = avgMismatch[2];
+    return {
+      assistantReply: [
+        "Your average/mean logic is incomplete.",
+        `Change \`${avgMismatch[0]}\` to \`return (${left} + ${right}) / 2\` for two inputs.`,
+        "If you have more values, divide by the total count.",
+      ].join(" "),
+      rationale: "A mean is sum divided by number of terms; returning only sum is incorrect.",
+      highlightedSnippet: avgMismatch[0],
+      matchedTerms: ["average", "mean"],
+    };
+  }
+
+  return null;
+}
+
 export function buildQuickAssistResponse({
   question,
   selectedFile,
@@ -135,7 +216,8 @@ export function buildQuickAssistResponse({
 }: QuickAssistContext): QuickAssistResponse {
   const safeQuestion = question.trim();
   const terms = extractTerms(safeQuestion);
-  const source = (selectedCode?.trim() || fileContent || "").trim();
+  const questionSnippet = extractCodeSnippetFromQuestion(safeQuestion);
+  const source = (selectedCode?.trim() || fileContent || questionSnippet || "").trim();
   const squareMismatch = source.match(/return\s+([a-zA-Z_][\w]*)\s*\*\s*2/);
   const mentionsSquare = safeQuestion.toLowerCase().includes("square") || source.toLowerCase().includes("square(");
   if (squareMismatch && mentionsSquare) {
@@ -151,6 +233,10 @@ export function buildQuickAssistResponse({
       highlightedSnippet: squareMismatch[0],
       matchedTerms: ["square", "return"],
     };
+  }
+  const logicalMismatch = detectCommonLogicalMismatch(source, safeQuestion);
+  if (logicalMismatch) {
+    return logicalMismatch;
   }
   const lines = source.split("\n").filter((line) => line.trim().length > 0);
   const rankedLines = lines

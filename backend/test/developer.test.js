@@ -254,3 +254,31 @@ test("autopilot quality gate requires stronger quality for website prompts", () 
   assert.equal(__test.isHighQualityAutopilotArtifact(prompt, weakArtifact, "website"), false);
   assert.equal(__test.isHighQualityAutopilotArtifact(prompt, strongArtifact, "website"), true);
 });
+
+test("detects and fixes square mismatch for non-build prompts", () => {
+  const mismatch = __test.detectLogicalMismatchInSources(
+    "Why is square() not working?",
+    { "main.py": "def square(x):\n  return x * 2\nprint(square(3))" }
+  );
+  assert.equal(Boolean(mismatch), true);
+  assert.equal(mismatch.path, "main.py");
+  assert.match(mismatch.matchedLine, /return x \* 2/);
+  assert.match(mismatch.fixLine, /return x \*\* 2/);
+
+  const fixed = __test.applyLogicalFixToContent(
+    "def square(x):\n  return x * 2\n",
+    "return x * 2",
+    "return x ** 2"
+  );
+  assert.match(fixed, /return x \*\* 2/);
+});
+
+test("detects and fixes inverted even-check logic for non-build prompts", () => {
+  const mismatch = __test.detectLogicalMismatchInSources(
+    "why is my is_even function wrong?",
+    { "main.py": "def is_even(x):\n  return x % 2 == 1\n" }
+  );
+  assert.equal(Boolean(mismatch), true);
+  assert.match(mismatch.matchedLine, /% 2 == 1/);
+  assert.match(mismatch.fixLine, /% 2 == 0/);
+});

@@ -19,6 +19,103 @@ function isBuildPrompt(prompt) {
   return buildKeywords.some((word) => text.includes(word));
 }
 
+function extractQuestionCodeSnippet(prompt) {
+  const text = String(prompt || "");
+  const fenced = text.match(/```(?:python|py)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]?.trim()) return fenced[1].trim();
+  const lines = text.split("\n").filter((line) => line.trim().length > 0);
+  const codeLike = lines.filter((line) =>
+    /^(def\s+\w+\(|return\b|print\(|\s{2,}|\t|[a-zA-Z_]\w*\s*=)/.test(line.trimStart())
+  );
+  return codeLike.length >= 2 ? codeLike.join("\n").trim() : "";
+}
+
+function detectLogicalMismatchInSources(prompt, currentFiles = {}) {
+  const promptText = String(prompt || "").toLowerCase();
+  const mentionsSquare = /square|squaring|squared/.test(promptText);
+  const mentionsEven = /even|is_even|iseven/.test(promptText);
+  const mentionsOdd = /odd|is_odd|isodd/.test(promptText);
+  const questionSnippet = extractQuestionCodeSnippet(prompt);
+  const candidates = [];
+  if (questionSnippet) {
+    candidates.push({ source: "prompt", path: "", content: questionSnippet });
+  }
+  Object.entries(currentFiles || {}).forEach(([path, content]) => {
+    candidates.push({ source: "file", path, content: String(content || "") });
+  });
+  for (const candidate of candidates) {
+    const text = String(candidate.content || "");
+    const functionHint = /def\s+square\s*\(/i.test(text) || /square\s*\(/i.test(text);
+    const returnMultiplyMatch = text.match(/return\s+([a-zA-Z_][\w]*)\s*\*\s*2/);
+    if ((mentionsSquare || functionHint) && returnMultiplyMatch) {
+      return {
+        ...candidate,
+        variableName: returnMultiplyMatch[1],
+        matchedLine: returnMultiplyMatch[0],
+        fixLine: `return ${returnMultiplyMatch[1]} ** 2`,
+        reason:
+          "Your function is doubling the value, not squaring it. Replace multiplication by 2 with exponentiation.",
+      };
+    }
+    const evenMatch = text.match(/return\s+([a-zA-Z_][\w]*)\s*%\s*2\s*==\s*1/);
+    if ((mentionsEven || /is_even|iseven/.test(text.toLowerCase())) && evenMatch) {
+      return {
+        ...candidate,
+        variableName: evenMatch[1],
+        matchedLine: evenMatch[0],
+        fixLine: `return ${evenMatch[1]} % 2 == 0`,
+        reason: "Your even-check condition is inverted. `% 2 == 1` checks odd numbers.",
+      };
+    }
+    const oddMatch = text.match(/return\s+([a-zA-Z_][\w]*)\s*%\s*2\s*==\s*0/);
+    if ((mentionsOdd || /is_odd|isodd/.test(text.toLowerCase())) && oddMatch) {
+      return {
+        ...candidate,
+        variableName: oddMatch[1],
+        matchedLine: oddMatch[0],
+        fixLine: `return ${oddMatch[1]} % 2 == 1`,
+        reason: "Your odd-check condition is inverted. `% 2 == 0` checks even numbers.",
+      };
+    }
+  }
+  return null;
+}
+
+function applyLogicalFixToContent(content, originalLine, fixLine) {
+  const source = String(content || "");
+  const escaped = originalLine.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return source.replace(new RegExp(escaped), fixLine);
+}
+
+function buildLogicalMismatchDeveloperArtifact(prompt, currentFiles = {}) {
+  const mismatch = detectLogicalMismatchInSources(prompt, currentFiles);
+  if (!mismatch) {
+    return null;
+  }
+  const generatedFiles = {};
+  const filesTouched = [];
+  if (mismatch.source === "file" && mismatch.path) {
+    generatedFiles[mismatch.path] = applyLogicalFixToContent(
+      mismatch.content,
+      mismatch.matchedLine,
+      mismatch.fixLine
+    );
+    filesTouched.push(mismatch.path);
+  }
+  return {
+    unifiedDiff: "",
+    filesTouched,
+    rationale: "Detected a deterministic logical mismatch and prepared a targeted one-line correction.",
+    generatedFiles,
+    previewHtml: "",
+    assistantReply: [
+      mismatch.reason,
+      `Replace \`${mismatch.matchedLine}\` with \`${mismatch.fixLine}\`.`,
+      "Run one or two sample inputs again to confirm expected behavior.",
+    ].join(" "),
+  };
+}
+
 function isCompanyWebsitePrompt(prompt) {
   const text = String(prompt || "").toLowerCase();
   return text.includes("company") && (text.includes("website") || text.includes("web app") || text.includes("site"));
@@ -937,6 +1034,22 @@ async function runDeveloperAgent({
   confidenceMode = "pair",
 }) {
   const buildMode = isBuildPrompt(userRequest);
+  if (!buildMode) {
+    const heuristicArtifact = buildLogicalMismatchDeveloperArtifact(userRequest, currentFiles);
+    if (heuristicArtifact) {
+      return {
+        artifact: heuristicArtifact,
+        proof: {
+          provider: "codex-harness",
+          model: "developer-logical-mismatch-rule",
+          responseId: `developer-logic-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          agentRole: "DEVELOPER",
+        },
+        modelText: JSON.stringify({ rule: "logical-mismatch-fix" }),
+      };
+    }
+  }
   const autopilotBuildMode = confidenceMode === "autopilot" && buildMode;
   const buildIntent = detectBuildIntent(userRequest);
   const grounding = buildPromptGroundingTerms(userRequest);
@@ -1091,5 +1204,8 @@ module.exports = {
     deriveBrandLabel,
     buildPremiumFilesByIntent,
     isHighQualityAutopilotArtifact,
+    detectLogicalMismatchInSources,
+    applyLogicalFixToContent,
+    buildLogicalMismatchDeveloperArtifact,
   },
 };
