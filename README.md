@@ -171,6 +171,7 @@ Autopilot includes deterministic premium fallback templates for website/chatbot/
 For code-edit prompts (`pair`/`autopilot`), DEVELOPER now enforces file-level outputs:
 
 - Codex is called first with current project files and explicit edit constraints.
+- Pasted inline code blocks are treated as editable source even when no workspace file is selected.
 - If the model returns explanation-only content, a second enforced pass requires `generatedFiles` + `filesTouched`.
 - Deterministic logical-fix fallback is only used after Codex attempts, not before.
 - Agent calls now use OpenAI Responses JSON-schema mode, with resilient parsing fallback for non-schema text.
@@ -261,6 +262,7 @@ If Vercel is stuck on an older commit, push any new commit to `main` to trigger 
 
 - `OPENAI_API_KEY` (optional; enables live model calls)
 - `OPENAI_MODEL` (default: `gpt-5-codex`)
+- `OPENAI_CODEX_MODEL` (default: `gpt-5-codex`, explicit model for SDLC agent Codex calls)
 - `OPENAI_TIMEOUT_MS`
 - `OPENAI_FAST_MODEL` (default: `gpt-5-codex`, used by quick assist endpoint)
 - `OPENAI_FAST_TIMEOUT_MS` (default: `8000`)

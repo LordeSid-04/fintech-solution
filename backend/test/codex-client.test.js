@@ -33,3 +33,16 @@ test("extractOutputParsed returns parsed object from output parts", () => {
   };
   assert.deepEqual(__test.extractOutputParsed(payload), { summary: "ok" });
 });
+
+test("resolveCodexModel prefers explicit Codex model env", () => {
+  const prevCodex = process.env.OPENAI_CODEX_MODEL;
+  const prevOpenAi = process.env.OPENAI_MODEL;
+  process.env.OPENAI_CODEX_MODEL = "gpt-5-codex";
+  process.env.OPENAI_MODEL = "gpt-4o-mini";
+  try {
+    assert.equal(__test.resolveCodexModel(), "gpt-5-codex");
+  } finally {
+    process.env.OPENAI_CODEX_MODEL = prevCodex;
+    process.env.OPENAI_MODEL = prevOpenAi;
+  }
+});

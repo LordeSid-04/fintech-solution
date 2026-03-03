@@ -70,6 +70,51 @@ function extractQuestionCodeSnippet(prompt) {
   return codeLike.length >= 2 ? codeLike.join("\n").trim() : "";
 }
 
+function extractInlineCodeBlock(prompt) {
+  const text = String(prompt || "");
+  const fence = text.match(/```([a-zA-Z0-9_+-]*)\s*([\s\S]*?)```/);
+  if (!fence?.[2]?.trim()) {
+    return null;
+  }
+  return {
+    language: String(fence[1] || "").toLowerCase(),
+    code: fence[2].trim(),
+  };
+}
+
+function inferInlineTargetPath({ code = "", language = "" }) {
+  const firstLine = String(code || "").split("\n")[0] || "";
+  const filenameMatch = firstLine.match(/^\s*#\s*([A-Za-z0-9._/-]+\.[A-Za-z0-9]+)\s*$/);
+  if (filenameMatch?.[1]) {
+    return filenameMatch[1];
+  }
+  const lang = String(language || "").toLowerCase();
+  if (lang === "python" || lang === "py") return "snippet.py";
+  if (lang === "javascript" || lang === "js") return "snippet.js";
+  if (lang === "typescript" || lang === "ts") return "snippet.ts";
+  if (lang === "tsx") return "snippet.tsx";
+  if (lang === "jsx") return "snippet.jsx";
+  if (lang === "java") return "Snippet.java";
+  if (lang === "go") return "snippet.go";
+  if (lang === "rust" || lang === "rs") return "snippet.rs";
+  if (/^\s*(import|from|def|class)\b/m.test(code)) return "snippet.py";
+  if (/^\s*(const|let|var|function|export)\b/m.test(code)) return "snippet.js";
+  return "snippet.txt";
+}
+
+function extractCodeFromModelText(text) {
+  const value = String(text || "").trim();
+  if (!value) return "";
+  const fenced = value.match(/```(?:[a-zA-Z0-9_+-]+)?\s*([\s\S]*?)```/);
+  if (fenced?.[1]?.trim()) {
+    return fenced[1].trim();
+  }
+  if (value.includes("\n") && /(def |class |return |import |const |let |function )/.test(value)) {
+    return value;
+  }
+  return "";
+}
+
 function detectLogicalMismatchInSources(prompt, currentFiles = {}) {
   const promptText = String(prompt || "").toLowerCase();
   const mentionsSquare = /square|squaring|squared/.test(promptText);
@@ -1180,10 +1225,12 @@ function looksLikeCodeEditPrompt(prompt, currentFiles = {}) {
   const text = String(prompt || "");
   const lower = text.toLowerCase();
   const hasFiles = Object.keys(currentFiles || {}).length > 0;
+  const inlineCode = extractInlineCodeBlock(text) || (extractQuestionCodeSnippet(text) ? { code: extractQuestionCodeSnippet(text), language: "" } : null);
   const editVerb = /\b(fix|correct|debug|patch|refactor|update|change|rewrite|repair|improve)\b/i.test(lower);
   const errorSignal = /\b(error|exception|traceback|failing|wrong output|bug|issue|broken)\b/i.test(lower);
   const codeSignal = /```[\s\S]*```/.test(text) || /\b(def|class|function|return|import|const|let|var)\b/.test(text);
-  return hasFiles && (editVerb || errorSignal || codeSignal);
+  const hasActionableSource = hasFiles || Boolean(inlineCode?.code?.trim());
+  return hasActionableSource && (editVerb || errorSignal || codeSignal);
 }
 
 function pickLikelyTargetFiles(currentFiles = {}, limit = 6) {
@@ -1236,6 +1283,12 @@ async function runDeveloperAgent({
 }) {
   const buildMode = isBuildPrompt(userRequest);
   const codeEditMode = !buildMode && looksLikeCodeEditPrompt(userRequest, currentFiles);
+  const inlineBlock = extractInlineCodeBlock(userRequest);
+  const inlineSnippet = {
+    language: inlineBlock?.language || "",
+    code: inlineBlock?.code || extractQuestionCodeSnippet(userRequest) || "",
+  };
+  const inferredInlinePath = inlineSnippet.code ? inferInlineTargetPath(inlineSnippet) : "";
   if (!buildMode && looksLikeGeneralKnowledgePrompt(userRequest, currentFiles)) {
     const knowledgeSystemPrompt = [
       "You are DEVELOPER in a governed multi-agent pipeline.",
@@ -1310,6 +1363,14 @@ async function runDeveloperAgent({
     pickLikelyTargetFiles(currentFiles),
     null,
     2
+  )}\n\nInline code snippet (if user pasted code directly):\n${JSON.stringify(
+    {
+      language: inlineSnippet.language,
+      inferredPath: inferredInlinePath,
+      code: inlineSnippet.code,
+    },
+    null,
+    2
   )}\n\nWebsite quality brief:\n${JSON.stringify(
     websiteBrief,
     null,
@@ -1337,9 +1398,10 @@ async function runDeveloperAgent({
 
 Code edit enforcement:
 - This request is a code-fix/edit, not a generic answer.
-- You MUST return generatedFiles with at least one updated file from Current project files.
+- You MUST return generatedFiles with at least one updated file from Current project files or the inline snippet.
 - Preserve unrelated code and only apply targeted fixes.
-- Ensure filesTouched includes each updated file path.`;
+- Ensure filesTouched includes each updated file path.
+- If only inline snippet is provided, write the corrected full file content to generatedFiles["${inferredInlinePath || "snippet.py"}"].`;
     codex = await callCodex({
       agentRole: "DEVELOPER",
       systemPrompt,
@@ -1432,6 +1494,20 @@ Code edit enforcement:
       "Applied deterministic premium generation to preserve quality and relevance in autopilot mode.";
   }
 
+  if (codeEditMode && Object.keys(normalizedArtifact.generatedFiles).length === 0 && inlineSnippet.code) {
+    const candidateCode = extractCodeFromModelText(codex.text);
+    if (candidateCode) {
+      const targetPath = inferredInlinePath || "snippet.py";
+      normalizedArtifact.generatedFiles = { [targetPath]: candidateCode };
+      normalizedArtifact.filesTouched = [targetPath];
+      normalizedArtifact.rationale =
+        "Recovered corrected code from Codex text output when structured generatedFiles were missing.";
+      normalizedArtifact.assistantReply =
+        normalizedArtifact.assistantReply ||
+        `Generated a corrected version of your pasted code in ${targetPath}.`;
+    }
+  }
+
   if (codeEditMode && Object.keys(normalizedArtifact.generatedFiles).length === 0) {
     const heuristicArtifact = buildLogicalMismatchDeveloperArtifact(userRequest, currentFiles);
     if (heuristicArtifact) {
@@ -1479,6 +1555,9 @@ module.exports = {
     detectLogicalMismatchInSources,
     applyLogicalFixToContent,
     buildLogicalMismatchDeveloperArtifact,
+    extractInlineCodeBlock,
+    inferInlineTargetPath,
+    extractCodeFromModelText,
     looksLikeGeneralKnowledgePrompt,
     hasKnowledgeReplyRelevance,
     normalizeKnowledgeArtifact,

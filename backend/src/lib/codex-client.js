@@ -148,9 +148,13 @@ function toResponseBody({ model, systemPrompt, userPrompt, responseSchema }) {
   return body;
 }
 
+function resolveCodexModel() {
+  return process.env.OPENAI_CODEX_MODEL || process.env.OPENAI_MODEL || "gpt-5-codex";
+}
+
 async function callCodex({ agentRole, systemPrompt, userPrompt, responseSchema }) {
   const now = new Date().toISOString();
-  const model = process.env.OPENAI_MODEL || "gpt-5-codex";
+  const model = resolveCodexModel();
   const key = process.env.OPENAI_API_KEY;
 
   if (!key) {
@@ -230,5 +234,6 @@ module.exports = {
     parseModelJson,
     extractOutputText,
     extractOutputParsed,
+    resolveCodexModel,
   },
 };

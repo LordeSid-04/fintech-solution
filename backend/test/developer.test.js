@@ -304,6 +304,18 @@ test("detects code edit intent only when workspace files exist", () => {
   );
 });
 
+test("detects code edit intent with pasted inline code and no workspace files", () => {
+  const prompt = [
+    "Fix all faulty functions",
+    "```python",
+    "# stress_test_app.py",
+    "def calculate_discount(price, user):",
+    "  return price / 0",
+    "```",
+  ].join("\n");
+  assert.equal(__test.looksLikeCodeEditPrompt(prompt, {}), true);
+});
+
 test("prioritizes source files when choosing likely edit targets", () => {
   const targets = __test.pickLikelyTargetFiles(
     {
@@ -376,4 +388,14 @@ test("knowledge artifact normalization rejects low-specificity generic answers",
 test("developer artifact fallback uses model text for non-build prompts", () => {
   const normalized = __test.normalizeDeveloperArtifact({}, "Explain recursion with a simple example", "Recursion is when a function calls itself until a base case is met.");
   assert.match(normalized.assistantReply, /function calls itself/i);
+});
+
+test("infers inline target path from filename comment", () => {
+  const block = __test.extractInlineCodeBlock("```python\n# stress_test_app.py\ndef main():\n  pass\n```");
+  assert.equal(__test.inferInlineTargetPath(block), "stress_test_app.py");
+});
+
+test("extracts code from fenced model output", () => {
+  const code = __test.extractCodeFromModelText("Here is the patch:\n```python\ndef main():\n    return 1\n```");
+  assert.match(code, /def main/);
 });
