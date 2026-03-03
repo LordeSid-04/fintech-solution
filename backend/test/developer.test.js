@@ -293,6 +293,30 @@ test("detects and fixes cube mismatch for non-build prompts", () => {
   assert.match(mismatch.fixLine, /return x \*\* 3/);
 });
 
+test("detects code edit intent only when workspace files exist", () => {
+  assert.equal(
+    __test.looksLikeCodeEditPrompt("please fix this traceback in my function", { "main.py": "print('x')" }),
+    true
+  );
+  assert.equal(
+    __test.looksLikeCodeEditPrompt("please fix this traceback in my function", {}),
+    false
+  );
+});
+
+test("prioritizes source files when choosing likely edit targets", () => {
+  const targets = __test.pickLikelyTargetFiles(
+    {
+      "README.md": "# notes",
+      "backend/src/server.js": "console.log('ok')",
+      "script.py": "print('hello')",
+      "docs/guide.txt": "text",
+    },
+    2
+  );
+  assert.deepEqual(targets, ["backend/src/server.js", "script.py"]);
+});
+
 test("detects general knowledge prompts without code context", () => {
   assert.equal(
     __test.looksLikeGeneralKnowledgePrompt("Explain what quantum entanglement means in simple words", {}),

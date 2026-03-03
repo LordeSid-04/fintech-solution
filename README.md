@@ -168,6 +168,12 @@ For build-oriented prompts, DEVELOPER artifacts are validated with:
 
 Autopilot includes deterministic premium fallback templates for website/chatbot/dashboard/app intents when quality gates are not met.
 
+For code-edit prompts (`pair`/`autopilot`), DEVELOPER now enforces file-level outputs:
+
+- Codex is called first with current project files and explicit edit constraints.
+- If the model returns explanation-only content, a second enforced pass requires `generatedFiles` + `filesTouched`.
+- Deterministic logical-fix fallback is only used after Codex attempts, not before.
+
 ---
 
 ## Local Setup
@@ -177,7 +183,7 @@ Autopilot includes deterministic premium fallback templates for website/chatbot/
 - Node.js `18.17+` (`20+` recommended)
 - npm
 
-### Install
+### 1) Clone and install
 
 ```bash
 git clone https://github.com/LordeSid-04/experiment-dlweek.git
@@ -185,17 +191,42 @@ cd experiment-dlweek
 npm run setup
 ```
 
-### Backend
+### 2) Configure backend environment
+
+Create a local env file from the template:
 
 ```bash
 cd backend
 copy .env.example .env
+```
+
+(`copy` is for Windows PowerShell/CMD. On macOS/Linux use `cp .env.example .env`.)
+
+Edit `backend/.env` and set values you need:
+
+- `OPENAI_API_KEY` (optional but recommended for live model output)
+- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_AUTH_TABLE` (optional; only if using Supabase auth store)
+
+Where to get keys:
+
+- OpenAI API key: OpenAI dashboard -> API Keys
+- Supabase URL + Service Role key: Supabase project -> Settings -> API
+
+Important:
+
+- Use **Supabase Service Role key** on backend only (never expose in frontend code).
+- Do not commit `.env` to GitHub.
+
+### 3) Start backend
+
+```bash
+cd backend
 npm install
 npm test
 npm start
 ```
 
-### Frontend
+### 4) Start frontend
 
 ```bash
 cd frontend
@@ -204,17 +235,17 @@ npm test
 npm run dev
 ```
 
-Set frontend backend URL:
+Set frontend backend URL in `frontend/.env.local`:
 
 ```bash
 NEXT_PUBLIC_BACKEND_URL=http://localhost:4000
 ```
 
-If you open the frontend from another device, do not use `localhost` for the frontend backend URL. Set `NEXT_PUBLIC_BACKEND_URL` to a backend address reachable by that device (for example `http://<your-lan-ip>:4000` or your deployed backend URL).
+If you open the frontend from another device, do not use `localhost`. Use a backend address reachable by that device (for example `http://<your-lan-ip>:4000` or your deployed backend URL).
 
 If Vercel is stuck on an older commit, push any new commit to `main` to trigger a fresh deployment from the latest source.
 
-Open:
+### 5) Open the app
 
 - `http://localhost:3000/auth`
 - `http://localhost:3000/confidence`
@@ -229,14 +260,29 @@ Open:
 - `OPENAI_API_KEY` (optional; enables live model calls)
 - `OPENAI_MODEL` (default: `gpt-5-codex`)
 - `OPENAI_TIMEOUT_MS`
+- `OPENAI_FAST_MODEL` (default: `gpt-4o-mini`, used by quick assist endpoint)
+- `OPENAI_FAST_TIMEOUT_MS` (default: `8000`)
 - `GOVERNOR_USE_MODEL_SUMMARY` (`false` by default for lower latency)
 - `BACKEND_PORT` (default: `4000`)
 - `SUPABASE_URL` (optional; enables Supabase auth store)
 - `SUPABASE_SERVICE_ROLE_KEY` (optional; required with `SUPABASE_URL`)
 - `SUPABASE_AUTH_TABLE` (default: `users`)
 
+`backend/.env` is local-only and intentionally not committed to GitHub. Use `backend/.env.example` as the template.
+
 If `OPENAI_API_KEY` is unset, the backend uses a deterministic harness fallback for continuity.
 After changing `OPENAI_API_KEY` in `backend/.env`, restart the backend process so the new key is loaded.
+
+### Codex Troubleshooting
+
+If responses look generic or no file patch is produced in pair mode:
+
+1. Verify backend is reading your key:
+   - `OPENAI_API_KEY` is set in `backend/.env`
+   - backend was restarted after editing `.env`
+2. Open workspace logs and confirm `provider` is `openai-api` for DEVELOPER steps.
+3. Keep prompts explicit for edits (for example: "fix this file and return updated code").
+4. Ensure the file is loaded in workspace state (selected file present in file explorer).
 
 Auth storage behavior:
 

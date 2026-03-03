@@ -1136,6 +1136,23 @@ function buildPreviewFromGeneratedFiles(generatedFiles, prompt) {
   ].join("\n");
 }
 
+function looksLikeCodeEditPrompt(prompt, currentFiles = {}) {
+  const text = String(prompt || "");
+  const lower = text.toLowerCase();
+  const hasFiles = Object.keys(currentFiles || {}).length > 0;
+  const editVerb = /\b(fix|correct|debug|patch|refactor|update|change|rewrite|repair|improve)\b/i.test(lower);
+  const errorSignal = /\b(error|exception|traceback|failing|wrong output|bug|issue|broken)\b/i.test(lower);
+  const codeSignal = /```[\s\S]*```/.test(text) || /\b(def|class|function|return|import|const|let|var)\b/.test(text);
+  return hasFiles && (editVerb || errorSignal || codeSignal);
+}
+
+function pickLikelyTargetFiles(currentFiles = {}, limit = 6) {
+  const entries = Object.keys(currentFiles || {});
+  const preferred = entries.filter((path) => /\.(py|js|ts|tsx|jsx|java|go|rs|c|cpp|cs)$/i.test(path));
+  const selected = preferred.length ? preferred : entries;
+  return selected.slice(0, limit);
+}
+
 function normalizeDeveloperArtifact(raw, userRequest) {
   const pickText = (value, fallback) => {
     if (typeof value === "string" && value.trim()) return value;
@@ -1177,57 +1194,42 @@ async function runDeveloperAgent({
   confidenceMode = "pair",
 }) {
   const buildMode = isBuildPrompt(userRequest);
-  if (!buildMode) {
-    const heuristicArtifact = buildLogicalMismatchDeveloperArtifact(userRequest, currentFiles);
-    if (heuristicArtifact) {
-      return {
-        artifact: heuristicArtifact,
-        proof: {
-          provider: "codex-harness",
-          model: "developer-logical-mismatch-rule",
-          responseId: `developer-logic-${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          agentRole: "DEVELOPER",
-        },
-        modelText: JSON.stringify({ rule: "logical-mismatch-fix" }),
-      };
-    }
-    if (looksLikeGeneralKnowledgePrompt(userRequest, currentFiles)) {
-      const knowledgeSystemPrompt = [
-        "You are DEVELOPER in a governed multi-agent pipeline.",
-        "The user asked a general knowledge question (not a build/code patch request).",
-        "Respond with high correctness, clear logic, and direct relevance to the exact question.",
-        "Cover the user's actual domain/topic and avoid generic filler.",
-        "Give a concise direct answer first, then brief reasoning, then one verification step.",
-        "Do not invent facts, references, datasets, or certainty.",
-        "If uncertainty exists, state it explicitly and provide a practical way to verify.",
-        "Return strict JSON only with keys: assistantReply, rationale.",
-      ].join(" ");
-      const knowledgeUserPrompt = `Question:\n${userRequest}\n\nReturn a concise but complete answer and keep it tightly scoped to the question intent.`;
-      let knowledgeCodex = await callCodex({
+  const codeEditMode = !buildMode && looksLikeCodeEditPrompt(userRequest, currentFiles);
+  if (!buildMode && looksLikeGeneralKnowledgePrompt(userRequest, currentFiles)) {
+    const knowledgeSystemPrompt = [
+      "You are DEVELOPER in a governed multi-agent pipeline.",
+      "The user asked a general knowledge question (not a build/code patch request).",
+      "Respond with high correctness, clear logic, and direct relevance to the exact question.",
+      "Cover the user's actual domain/topic and avoid generic filler.",
+      "Give a concise direct answer first, then brief reasoning, then one verification step.",
+      "Do not invent facts, references, datasets, or certainty.",
+      "If uncertainty exists, state it explicitly and provide a practical way to verify.",
+      "Return strict JSON only with keys: assistantReply, rationale.",
+    ].join(" ");
+    const knowledgeUserPrompt = `Question:\n${userRequest}\n\nReturn a concise but complete answer and keep it tightly scoped to the question intent.`;
+    let knowledgeCodex = await callCodex({
+      agentRole: "DEVELOPER",
+      systemPrompt: knowledgeSystemPrompt,
+      userPrompt: knowledgeUserPrompt,
+    });
+    let knowledgeArtifact = normalizeKnowledgeArtifact(knowledgeCodex.parsed || {}, userRequest);
+
+    let pass = 0;
+    while (pass < 2 && knowledgeArtifact.assistantReply === buildKnowledgeFallbackArtifact(userRequest).assistantReply) {
+      knowledgeCodex = await callCodex({
         agentRole: "DEVELOPER",
         systemPrompt: knowledgeSystemPrompt,
-        userPrompt: knowledgeUserPrompt,
+        userPrompt: `${knowledgeUserPrompt}\n\nRefinement: increase relevance to user wording and keep factual claims conservative unless highly certain.`,
       });
-      let knowledgeArtifact = normalizeKnowledgeArtifact(knowledgeCodex.parsed || {}, userRequest);
-
-      let pass = 0;
-      while (pass < 2 && knowledgeArtifact.assistantReply === buildKnowledgeFallbackArtifact(userRequest).assistantReply) {
-        knowledgeCodex = await callCodex({
-          agentRole: "DEVELOPER",
-          systemPrompt: knowledgeSystemPrompt,
-          userPrompt: `${knowledgeUserPrompt}\n\nRefinement: increase relevance to user wording and keep factual claims conservative unless highly certain.`,
-        });
-        knowledgeArtifact = normalizeKnowledgeArtifact(knowledgeCodex.parsed || {}, userRequest);
-        pass += 1;
-      }
-
-      return {
-        artifact: knowledgeArtifact,
-        proof: knowledgeCodex.proof,
-        modelText: knowledgeCodex.text,
-      };
+      knowledgeArtifact = normalizeKnowledgeArtifact(knowledgeCodex.parsed || {}, userRequest);
+      pass += 1;
     }
+
+    return {
+      artifact: knowledgeArtifact,
+      proof: knowledgeCodex.proof,
+      modelText: knowledgeCodex.text,
+    };
   }
   const autopilotBuildMode = confidenceMode === "autopilot" && buildMode;
   const buildIntent = detectBuildIntent(userRequest);
@@ -1239,6 +1241,8 @@ async function runDeveloperAgent({
       "Return strict JSON only with keys: unifiedDiff, filesTouched, rationale, generatedFiles, previewHtml, assistantReply.",
       "generatedFiles must map file paths to full code strings.",
       "For build prompts, generate complete, production-quality starter files and domain-relevant copy/content.",
+      "For code-edit prompts, always return concrete file updates in generatedFiles and include those file paths in filesTouched.",
+      "When code-editing existing files, do not only explain: return updated code content.",
       "Never swap in an unrelated generic template.",
       "Do not return markdown fences or extra keys.",
       autopilotBuildMode
@@ -1251,6 +1255,10 @@ async function runDeveloperAgent({
     2
   )}\n\nCurrent project files with latest content:\n${JSON.stringify(
     currentFiles,
+    null,
+    2
+  )}\n\nLikely target files for edits (if this is a bug-fix/edit request):\n${JSON.stringify(
+    pickLikelyTargetFiles(currentFiles),
     null,
     2
   )}\n\nWebsite quality brief:\n${JSON.stringify(
@@ -1273,6 +1281,22 @@ async function runDeveloperAgent({
     assistantReply: "",
   };
   let normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest);
+
+  if (codeEditMode && Object.keys(normalizedArtifact.generatedFiles).length === 0) {
+    const focusedPrompt = `${userPrompt}
+
+Code edit enforcement:
+- This request is a code-fix/edit, not a generic answer.
+- You MUST return generatedFiles with at least one updated file from Current project files.
+- Preserve unrelated code and only apply targeted fixes.
+- Ensure filesTouched includes each updated file path.`;
+    codex = await callCodex({
+      agentRole: "DEVELOPER",
+      systemPrompt,
+      userPrompt: focusedPrompt,
+    });
+    normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest);
+  }
 
   const maxRefinementPasses = autopilotBuildMode ? 3 : 2;
   let pass = 0;
@@ -1356,6 +1380,23 @@ async function runDeveloperAgent({
       "Applied deterministic premium generation to preserve quality and relevance in autopilot mode.";
   }
 
+  if (codeEditMode && Object.keys(normalizedArtifact.generatedFiles).length === 0) {
+    const heuristicArtifact = buildLogicalMismatchDeveloperArtifact(userRequest, currentFiles);
+    if (heuristicArtifact) {
+      return {
+        artifact: heuristicArtifact,
+        proof: {
+          provider: "codex-harness",
+          model: "developer-logical-mismatch-rule",
+          responseId: `developer-logic-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          agentRole: "DEVELOPER",
+        },
+        modelText: JSON.stringify({ rule: "logical-mismatch-fix" }),
+      };
+    }
+  }
+
   return {
     artifact: normalizedArtifact,
     proof: codex.proof,
@@ -1391,5 +1432,7 @@ module.exports = {
     normalizeKnowledgeArtifact,
     isHighStakesKnowledgePrompt,
     isLowSpecificityKnowledgeAnswer,
+    looksLikeCodeEditPrompt,
+    pickLikelyTargetFiles,
   },
 };

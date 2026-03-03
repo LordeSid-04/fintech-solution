@@ -288,13 +288,12 @@ function normalizeModelSuggestion(parsed, payload) {
 }
 
 async function getQuickAssistSuggestion(payload) {
-  const heuristic = buildHeuristicSuggestion(payload);
-  if (heuristic) {
-    return heuristic;
-  }
-
   const key = process.env.OPENAI_API_KEY;
   if (!key) {
+    const heuristic = buildHeuristicSuggestion(payload);
+    if (heuristic) {
+      return heuristic;
+    }
     return fallbackSuggestion(payload);
   }
 
@@ -349,6 +348,10 @@ async function getQuickAssistSuggestion(payload) {
     });
 
     if (!response.ok) {
+      const heuristic = buildHeuristicSuggestion(payload);
+      if (heuristic) {
+        return heuristic;
+      }
       return fallbackSuggestion(payload);
     }
     const json = await response.json();
@@ -371,10 +374,18 @@ async function getQuickAssistSuggestion(payload) {
           relevantSnippet: fallback.relevantSnippet,
         };
       }
+      const heuristic = buildHeuristicSuggestion(payload);
+      if (heuristic) {
+        return heuristic;
+      }
       return fallback;
     }
     return normalizeModelSuggestion(parsed, payload);
   } catch {
+    const heuristic = buildHeuristicSuggestion(payload);
+    if (heuristic) {
+      return heuristic;
+    }
     return fallbackSuggestion(payload);
   } finally {
     clearTimeout(timeout);
