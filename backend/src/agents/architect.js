@@ -26,6 +26,12 @@ const ARCHITECT_RESPONSE_SCHEMA = {
   },
 };
 
+function parsePositiveInt(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+}
+
 function normalizeArchitectArtifact(raw) {
   const riskForecast = raw?.riskForecast && typeof raw.riskForecast === "object"
     ? raw.riskForecast
@@ -62,6 +68,8 @@ async function runArchitectAgent({ userRequest, currentFiles = {} }) {
     systemPrompt,
     userPrompt,
     responseSchema: ARCHITECT_RESPONSE_SCHEMA,
+    timeoutMsOverride: parsePositiveInt(process.env.ARCHITECT_MODEL_TIMEOUT_MS, 12000),
+    maxAttemptsOverride: parsePositiveInt(process.env.ARCHITECT_MODEL_MAX_ATTEMPTS, 1),
   });
   if (!codex.parsed || typeof codex.parsed !== "object") {
     throw new Error("ARCHITECT returned invalid structured output.");

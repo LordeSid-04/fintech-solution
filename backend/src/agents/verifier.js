@@ -15,6 +15,12 @@ const VERIFIER_RESPONSE_SCHEMA = {
   },
 };
 
+function parsePositiveInt(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+}
+
 async function runVerifierAgent({ userRequest, diffArtifact }) {
   const systemPrompt = [
     "You are VERIFIER in a governed SDLC pipeline.",
@@ -28,6 +34,8 @@ async function runVerifierAgent({ userRequest, diffArtifact }) {
     systemPrompt,
     userPrompt,
     responseSchema: VERIFIER_RESPONSE_SCHEMA,
+    timeoutMsOverride: parsePositiveInt(process.env.VERIFIER_MODEL_TIMEOUT_MS, 10000),
+    maxAttemptsOverride: parsePositiveInt(process.env.VERIFIER_MODEL_MAX_ATTEMPTS, 1),
   });
   if (!codex.parsed || typeof codex.parsed !== "object") {
     throw new Error("VERIFIER returned invalid structured output.");

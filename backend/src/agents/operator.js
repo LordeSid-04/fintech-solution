@@ -16,6 +16,12 @@ const OPERATOR_RESPONSE_SCHEMA = {
   },
 };
 
+function parsePositiveInt(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+}
+
 async function runOperatorAgent({ userRequest, diffArtifact }) {
   const systemPrompt = [
     "You are OPERATOR in a governed SDLC pipeline.",
@@ -36,6 +42,8 @@ async function runOperatorAgent({ userRequest, diffArtifact }) {
     systemPrompt,
     userPrompt,
     responseSchema: OPERATOR_RESPONSE_SCHEMA,
+    timeoutMsOverride: parsePositiveInt(process.env.OPERATOR_MODEL_TIMEOUT_MS, 10000),
+    maxAttemptsOverride: parsePositiveInt(process.env.OPERATOR_MODEL_MAX_ATTEMPTS, 1),
   });
   if (!codex.parsed || typeof codex.parsed !== "object") {
     throw new Error("OPERATOR returned invalid structured output.");

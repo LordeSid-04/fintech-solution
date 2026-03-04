@@ -1492,6 +1492,47 @@ function pickLikelyTargetFiles(currentFiles = {}, limit = 6) {
   return selected.slice(0, limit);
 }
 
+function tokenizePromptForContext(prompt) {
+  return String(prompt || "")
+    .toLowerCase()
+    .split(/[^a-z0-9_]+/g)
+    .filter((token) => token.length >= 3);
+}
+
+function selectModelContextFiles(prompt, currentFiles = {}, options = {}) {
+  const maxFiles = parsePositiveInt(options.maxFiles, 10);
+  const maxCharsPerFile = parsePositiveInt(options.maxCharsPerFile, 2200);
+  const maxTotalChars = parsePositiveInt(options.maxTotalChars, 12000);
+  const promptTokens = new Set(tokenizePromptForContext(prompt));
+  const ranked = Object.entries(currentFiles || {})
+    .map(([path, content]) => {
+      const text = String(content || "");
+      const combined = `${path} ${text.slice(0, maxCharsPerFile)}`.toLowerCase();
+      let score = 0;
+      for (const token of promptTokens) {
+        if (combined.includes(token)) score += 1;
+      }
+      if (/\.(ts|tsx|js|jsx|py|java|go|rs)$/i.test(path)) score += 1;
+      if (/src\/app\/|components\/|pages\/|api\/|backend\/src\//i.test(path)) score += 1;
+      return [path, text, score];
+    })
+    .sort((a, b) => b[2] - a[2] || a[0].localeCompare(b[0]));
+
+  const selected = {};
+  let totalChars = 0;
+  for (const [path, text] of ranked) {
+    if (Object.keys(selected).length >= maxFiles) break;
+    if (totalChars >= maxTotalChars) break;
+    const remaining = Math.max(0, maxTotalChars - totalChars);
+    if (remaining <= 0) break;
+    const clipped = text.slice(0, Math.min(maxCharsPerFile, remaining));
+    if (!clipped.trim()) continue;
+    selected[path] = clipped;
+    totalChars += clipped.length;
+  }
+  return selected;
+}
+
 function normalizeDeveloperArtifact(raw, userRequest, modelText = "") {
   const pickText = (value, fallback) => {
     if (typeof value === "string" && value.trim()) return value;
@@ -1606,6 +1647,12 @@ async function runDeveloperAgent({
   const buildIntent = detectBuildIntent(userRequest);
   const grounding = buildPromptGroundingTerms(userRequest);
   const websiteBrief = buildWebsiteBrief(userRequest);
+  const modelContextFiles = selectModelContextFiles(userRequest, currentFiles, {
+    maxFiles: process.env.DEVELOPER_CONTEXT_MAX_FILES,
+    maxCharsPerFile: process.env.DEVELOPER_CONTEXT_MAX_CHARS_PER_FILE,
+    maxTotalChars: process.env.DEVELOPER_CONTEXT_MAX_TOTAL_CHARS,
+  });
+  const contextFilesForPrompt = Object.keys(modelContextFiles).length ? modelContextFiles : currentFiles;
   const systemPrompt =
     [
       "You are DEVELOPER in a governed multi-agent pipeline.",
@@ -1624,12 +1671,12 @@ async function runDeveloperAgent({
     planArtifact,
     null,
     2
-  )}\n\nCurrent project files with latest content:\n${JSON.stringify(
-    currentFiles,
+  )}\n\nCurrent project files with latest content (compressed for model latency):\n${JSON.stringify(
+    contextFilesForPrompt,
     null,
     2
   )}\n\nLikely target files for edits (if this is a bug-fix/edit request):\n${JSON.stringify(
-    pickLikelyTargetFiles(currentFiles),
+    pickLikelyTargetFiles(contextFilesForPrompt),
     null,
     2
   )}\n\nInline code snippet (if user pasted code directly):\n${JSON.stringify(
@@ -1803,5 +1850,6 @@ module.exports = {
     isLowSpecificityKnowledgeAnswer,
     looksLikeCodeEditPrompt,
     pickLikelyTargetFiles,
+    selectModelContextFiles,
   },
 };

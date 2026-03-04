@@ -353,6 +353,23 @@ test("prioritizes source files when choosing likely edit targets", () => {
   assert.deepEqual(targets, ["backend/src/server.js", "script.py"]);
 });
 
+test("selectModelContextFiles limits payload while keeping relevant files", () => {
+  const selected = __test.selectModelContextFiles(
+    "build crm dashboard for clients and leads",
+    {
+      "src/app/page.tsx": "crm dashboard clients leads ".repeat(400),
+      "src/components/LeadBoard.tsx": "lead pipeline stage value ".repeat(300),
+      "docs/notes.txt": "misc ".repeat(500),
+    },
+    { maxFiles: 2, maxCharsPerFile: 500, maxTotalChars: 700 }
+  );
+  const keys = Object.keys(selected);
+  assert.equal(keys.length <= 2, true);
+  const total = Object.values(selected).reduce((acc, value) => acc + String(value).length, 0);
+  assert.equal(total <= 700, true);
+  assert.equal(keys.includes("src/app/page.tsx"), true);
+});
+
 test("detects general knowledge prompts without code context", () => {
   assert.equal(
     __test.looksLikeGeneralKnowledgePrompt("Explain what quantum entanglement means in simple words", {}),
