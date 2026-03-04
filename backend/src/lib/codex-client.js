@@ -130,7 +130,7 @@ function extractOutputParsed(payload) {
   return null;
 }
 
-function toResponseBody({ model, systemPrompt, userPrompt, responseSchema }) {
+function toResponseBody({ model, systemPrompt, userPrompt, responseSchema, stream = false }) {
   const body = {
     model,
     input: [
@@ -144,6 +144,9 @@ function toResponseBody({ model, systemPrompt, userPrompt, responseSchema }) {
       },
     ],
   };
+  if (stream) {
+    body.stream = true;
+  }
   if (responseSchema?.schema && typeof responseSchema.schema === "object") {
     body.text = {
       format: {
@@ -195,7 +198,82 @@ function parseRetryAfterMs(response) {
   return Math.max(0, retryDate - Date.now());
 }
 
-async function callCodex({ agentRole, systemPrompt, userPrompt, responseSchema }) {
+function extractSseDataFrames(buffer) {
+  const frames = [];
+  let remaining = buffer;
+  while (true) {
+    const boundary = remaining.indexOf("\n\n");
+    if (boundary === -1) break;
+    const frame = remaining.slice(0, boundary);
+    remaining = remaining.slice(boundary + 2);
+    const dataLines = frame
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trim());
+    if (dataLines.length) {
+      frames.push(dataLines.join("\n"));
+    }
+  }
+  return { frames, remaining };
+}
+
+async function readOpenAiStream(response, onTextDelta) {
+  if (!response.body) {
+    const payload = await response.json();
+    const text = extractOutputText(payload);
+    return {
+      payload,
+      text,
+      parsed: extractOutputParsed(payload) || parseModelJson(text),
+    };
+  }
+
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+  let buffer = "";
+  let streamedText = "";
+  let completedResponse = null;
+  let responseId = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const { frames, remaining } = extractSseDataFrames(buffer);
+    buffer = remaining;
+    for (const frame of frames) {
+      if (!frame || frame === "[DONE]") continue;
+      let eventPayload;
+      try {
+        eventPayload = JSON.parse(frame);
+      } catch {
+        continue;
+      }
+      responseId = responseId || String(eventPayload.response_id || eventPayload.id || "");
+      if (eventPayload?.type === "response.output_text.delta" && typeof eventPayload.delta === "string") {
+        streamedText += eventPayload.delta;
+        if (typeof onTextDelta === "function" && eventPayload.delta.trim()) {
+          onTextDelta(eventPayload.delta);
+        }
+      }
+      if (eventPayload?.type === "response.completed" && eventPayload.response) {
+        completedResponse = eventPayload.response;
+      }
+    }
+  }
+
+  const payload = completedResponse || { id: responseId, output_text: streamedText };
+  const text = extractOutputText(payload) || streamedText;
+  return {
+    payload,
+    text,
+    parsed: extractOutputParsed(payload) || parseModelJson(text),
+  };
+}
+
+async function callCodex({ agentRole, systemPrompt, userPrompt, responseSchema, onTextDelta }) {
+  const shouldStream = typeof onTextDelta === "function";
   const now = new Date().toISOString();
   const models = resolveCodexModelCandidates();
   const key = process.env.OPENAI_API_KEY;
@@ -238,6 +316,7 @@ async function callCodex({ agentRole, systemPrompt, userPrompt, responseSchema }
                 systemPrompt,
                 userPrompt,
                 responseSchema: schemaEnabled ? responseSchema : undefined,
+                stream: shouldStream,
               })
             ),
           });
@@ -274,9 +353,15 @@ async function callCodex({ agentRole, systemPrompt, userPrompt, responseSchema }
           throw modelError;
         }
 
-        const payload = await response.json();
-        const text = extractOutputText(payload);
-        const parsed = extractOutputParsed(payload) || parseModelJson(text);
+        const { payload, text, parsed } = shouldStream
+          ? await readOpenAiStream(response, onTextDelta)
+          : await (() => {
+              return response.json().then((data) => ({
+                payload: data,
+                text: extractOutputText(data),
+                parsed: extractOutputParsed(data) || parseModelJson(extractOutputText(data)),
+              }));
+            })();
 
         return {
           text,

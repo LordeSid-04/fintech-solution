@@ -1373,6 +1373,7 @@ async function runDeveloperAgent({
   planArtifact,
   currentFiles = {},
   confidenceMode = "pair",
+  onModelDelta,
 }) {
   const codeEditMode = looksLikeCodeEditPrompt(userRequest, currentFiles);
   const buildMode = !codeEditMode && isBuildPrompt(userRequest);
@@ -1399,6 +1400,7 @@ async function runDeveloperAgent({
       systemPrompt: knowledgeSystemPrompt,
       userPrompt: knowledgeUserPrompt,
       responseSchema: KNOWLEDGE_RESPONSE_SCHEMA,
+      onTextDelta: onModelDelta,
     });
     let knowledgeArtifact = normalizeKnowledgeArtifact(
       knowledgeCodex.parsed || { assistantReply: knowledgeCodex.text, rationale: "" },
@@ -1459,6 +1461,7 @@ async function runDeveloperAgent({
     systemPrompt,
     userPrompt,
     responseSchema: DEVELOPER_RESPONSE_SCHEMA,
+    onTextDelta: onModelDelta,
   });
 
   const fallback = {
@@ -1485,6 +1488,7 @@ Code edit enforcement:
       systemPrompt,
       userPrompt: focusedPrompt,
       responseSchema: DEVELOPER_RESPONSE_SCHEMA,
+      onTextDelta: onModelDelta,
     });
     normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest, codex.text);
   }
@@ -1514,6 +1518,7 @@ Code edit enforcement:
       systemPrompt,
       userPrompt: correctionPrompt,
       responseSchema: DEVELOPER_RESPONSE_SCHEMA,
+      onTextDelta: onModelDelta,
     });
     normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest, codex.text);
     pass += 1;

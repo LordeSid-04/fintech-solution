@@ -335,12 +335,42 @@ async function executePipeline({
     stage: "diff",
     message: "Generating implementation patch and starter files...",
   });
+  let streamedDeveloperBuffer = "";
+  let lastDeveloperDeltaAt = 0;
+  const emitDeveloperDelta = (delta) => {
+    if (!emitEvent) return;
+    const text = String(delta || "");
+    if (!text.trim()) return;
+    streamedDeveloperBuffer += text;
+    const now = Date.now();
+    if (now - lastDeveloperDeltaAt < 500) return;
+    const chunk = streamedDeveloperBuffer.trim();
+    if (!chunk) return;
+    emit({
+      type: "agent_output",
+      agentRole: "DEVELOPER",
+      stage: "diff-stream",
+      content: truncateForLog(chunk, 1200),
+    });
+    streamedDeveloperBuffer = "";
+    lastDeveloperDeltaAt = now;
+  };
   let developer = await runDeveloperAgent({
     userRequest: prompt,
     planArtifact: architect.artifact,
     currentFiles: projectFiles,
     confidenceMode,
+    onModelDelta: emitEvent ? emitDeveloperDelta : undefined,
   });
+  if (streamedDeveloperBuffer.trim()) {
+    emit({
+      type: "agent_output",
+      agentRole: "DEVELOPER",
+      stage: "diff-stream",
+      content: truncateForLog(streamedDeveloperBuffer.trim(), 1200),
+    });
+    streamedDeveloperBuffer = "";
+  }
   const isBuildPrompt = /(build|create|website|web app|application|portfolio|landing page|frontend)/i.test(
     String(prompt || "")
   );
@@ -357,6 +387,7 @@ async function executePipeline({
         ...(developer.artifact.generatedFiles || {}),
       },
       confidenceMode,
+      onModelDelta: emitEvent ? emitDeveloperDelta : undefined,
     });
     developer = {
       ...continuation,
