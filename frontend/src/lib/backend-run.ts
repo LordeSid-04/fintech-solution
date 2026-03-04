@@ -128,6 +128,12 @@ export type PipelineStreamEvent =
       content: string;
       proof?: CodexProofRecord["proof"];
     }
+  | {
+      type: "generated_file_chunk";
+      path: string;
+      content: string;
+      done: boolean;
+    }
   | { type: "generated_files"; files: Record<string, string> }
   | { type: "generated_preview"; html: string }
   | {

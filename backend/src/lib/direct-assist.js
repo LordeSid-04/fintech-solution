@@ -393,6 +393,35 @@ function normalizeFindings(findings) {
   }));
 }
 
+function emitGeneratedFileChunks(emit, generatedFiles) {
+  if (!generatedFiles || typeof generatedFiles !== "object") {
+    return;
+  }
+  for (const [path, content] of Object.entries(generatedFiles)) {
+    const fullContent = String(content || "");
+    const chunkSize = 220;
+    if (!path) continue;
+    if (!fullContent.length) {
+      emit({ type: "generated_file_chunk", path, content: "", done: true });
+      continue;
+    }
+    for (let cursor = chunkSize; cursor < fullContent.length; cursor += chunkSize) {
+      emit({
+        type: "generated_file_chunk",
+        path,
+        content: fullContent.slice(0, cursor),
+        done: false,
+      });
+    }
+    emit({
+      type: "generated_file_chunk",
+      path,
+      content: fullContent,
+      done: true,
+    });
+  }
+}
+
 function mapFindingsByCategory(findings) {
   return findings.reduce((acc, item) => {
     const category = item.category || "uncategorized";
@@ -676,6 +705,7 @@ async function runDirectAssistPath({
     proof: modelResult.proof,
   });
   if (normalized.generatedFiles && Object.keys(normalized.generatedFiles).length) {
+    emitGeneratedFileChunks(emit, normalized.generatedFiles);
     emit({
       type: "generated_files",
       files: normalized.generatedFiles,

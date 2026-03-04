@@ -32,6 +32,8 @@ type ResponseViewerProps = {
     blockReasons: string[];
     evidenceQuotes?: string[];
   };
+  responseElapsedMs?: number;
+  isRunning?: boolean;
 };
 
 const highlightClassBySeverity = {
@@ -92,9 +94,12 @@ export function ResponseViewer({
     blockReasons: [],
     evidenceQuotes: [],
   },
+  responseElapsedMs = 0,
+  isRunning = false,
 }: ResponseViewerProps) {
   const streamAnchorRef = useRef<HTMLDivElement | null>(null);
   const [showRiskWhy, setShowRiskWhy] = useState(false);
+  const [selectedGeneratedPath, setSelectedGeneratedPath] = useState("");
   const fileEntries = Object.entries(generatedFiles);
   const hasContent = Boolean(assistantReply.trim() || rationale.trim() || fileEntries.length || streamLines.length);
   const checklist = buildIntentChecklist({
@@ -112,10 +117,35 @@ export function ResponseViewer({
     () => contentFlags.filter((item) => item.target === "rationale"),
     [contentFlags]
   );
+  const responseDurationLabel = useMemo(() => {
+    const safe = Math.max(0, Math.floor(responseElapsedMs));
+    const totalSeconds = Math.floor(safe / 1000);
+    const minutes = Math.floor(totalSeconds / 60)
+      .toString()
+      .padStart(2, "0");
+    const seconds = (totalSeconds % 60).toString().padStart(2, "0");
+    const centiseconds = Math.floor((safe % 1000) / 10)
+      .toString()
+      .padStart(2, "0");
+    return `${minutes}:${seconds}.${centiseconds}`;
+  }, [responseElapsedMs]);
+  const selectedGeneratedCode = selectedGeneratedPath ? generatedFiles[selectedGeneratedPath] ?? "" : "";
 
   useEffect(() => {
     streamAnchorRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [streamLines.length]);
+
+  useEffect(() => {
+    if (!fileEntries.length) {
+      if (selectedGeneratedPath) {
+        setSelectedGeneratedPath("");
+      }
+      return;
+    }
+    if (!selectedGeneratedPath || !(selectedGeneratedPath in generatedFiles)) {
+      setSelectedGeneratedPath(fileEntries[0][0]);
+    }
+  }, [fileEntries, generatedFiles, selectedGeneratedPath]);
 
   if (!hasContent) {
     return (
@@ -127,6 +157,18 @@ export function ResponseViewer({
 
   return (
     <div className="space-y-3 text-sm text-white/85">
+      <section className="rounded border border-white/10 bg-black/30 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <h4 className="text-xs font-semibold uppercase tracking-[0.08em] text-white/55">
+            Response Time
+          </h4>
+          <span className="font-mono text-xs text-violet-100">{responseDurationLabel}</span>
+        </div>
+        <p className="mt-1 text-[11px] text-white/55">
+          {isRunning ? "Timer is running while generation and retrieval stream in." : "Final response duration captured."}
+        </p>
+      </section>
+
       {riskLabel ? (
         <section className="rounded border border-white/10 bg-black/30 p-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -237,28 +279,42 @@ export function ResponseViewer({
           <h4 className="text-xs font-semibold uppercase tracking-[0.08em] text-white/55">
             Generated Files ({fileEntries.length})
           </h4>
-          <div className="mt-2 space-y-2">
-            {fileEntries.map(([path, code]) => (
-              <details key={path} className="rounded border border-white/10 bg-black/35" open>
-                <summary className="cursor-pointer px-3 py-2 font-mono text-xs text-violet-100">{path}</summary>
-                <SyntaxHighlighter
-                  language={inferCodeLanguage(path)}
-                  style={oneDark}
-                  customStyle={{
-                    margin: 0,
-                    borderTop: "1px solid rgba(255,255,255,0.08)",
-                    borderRadius: 0,
-                    background: "rgba(0,0,0,0.38)",
-                    fontSize: "12px",
-                  }}
-                  showLineNumbers
-                  wrapLongLines
-                >
-                  {code}
-                </SyntaxHighlighter>
-              </details>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {fileEntries.map(([path]) => (
+              <button
+                key={path}
+                type="button"
+                onClick={() => setSelectedGeneratedPath(path)}
+                className={`rounded border px-2 py-0.5 font-mono text-[11px] ${
+                  selectedGeneratedPath === path
+                    ? "border-violet-300/45 bg-violet-300/18 text-violet-100"
+                    : "border-white/12 bg-black/35 text-white/75 hover:bg-white/[0.08]"
+                }`}
+              >
+                {path}
+              </button>
             ))}
           </div>
+          {selectedGeneratedPath ? (
+            <div className="mt-2 rounded border border-white/10 bg-black/35">
+              <p className="px-3 py-2 font-mono text-xs text-violet-100">{selectedGeneratedPath}</p>
+              <SyntaxHighlighter
+                language={inferCodeLanguage(selectedGeneratedPath)}
+                style={oneDark}
+                customStyle={{
+                  margin: 0,
+                  borderTop: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: 0,
+                  background: "rgba(0,0,0,0.38)",
+                  fontSize: "12px",
+                }}
+                showLineNumbers
+                wrapLongLines
+              >
+                {selectedGeneratedCode}
+              </SyntaxHighlighter>
+            </div>
+          ) : null}
         </section>
       ) : null}
     </div>

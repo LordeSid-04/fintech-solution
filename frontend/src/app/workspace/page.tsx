@@ -327,11 +327,15 @@ export default function WorkspacePage() {
     }
   };
 
-  const handleGeneratedFiles = (files: Record<string, string>) => {
+  const handleGeneratedFiles = (
+    files: Record<string, string>,
+    options?: { streaming?: boolean }
+  ) => {
     if (companionOnly) {
       return;
     }
     if (!files || Object.keys(files).length === 0) return;
+    const isStreaming = Boolean(options?.streaming);
     const newPaths = Object.keys(files);
     setGeneratedFilesThisRun((prev) => Array.from(new Set([...prev, ...newPaths])));
     const firstFile = newPaths[0];
@@ -339,26 +343,19 @@ export default function WorkspacePage() {
       setSelectedFile(firstFile);
       setIsEditorOpen(true);
     }
-    newPaths.forEach((path) => {
-      const full = files[path] ?? "";
-      // Avoid high-frequency render storms on large/multi-file outputs.
-      const shouldAnimateTyping = full.length <= 1600 && newPaths.length <= 2;
-      if (!shouldAnimateTyping) {
-        setProjectFiles((prev) => ({ ...prev, [path]: full }));
-        return;
-      }
-      setProjectFiles((prev) => ({ ...prev, [path]: "" }));
-      let cursor = 0;
-      const chunkSize = 120;
-      const timerId = window.setInterval(() => {
-        cursor += chunkSize;
-        setProjectFiles((prev) => ({ ...prev, [path]: full.slice(0, cursor) }));
-        if (cursor >= full.length) {
-          window.clearInterval(timerId);
-          typingTimerIdsRef.current = typingTimerIdsRef.current.filter((id) => id !== timerId);
+    setProjectFiles((prev) => {
+      const next = { ...prev };
+      newPaths.forEach((path) => {
+        const incoming = files[path] ?? "";
+        const existing = prev[path] ?? "";
+        const shouldApplyDirectly = isStreaming || incoming.startsWith(existing);
+        if (shouldApplyDirectly) {
+          next[path] = incoming;
+          return;
         }
-      }, 40);
-      typingTimerIdsRef.current.push(timerId);
+        next[path] = incoming;
+      });
+      return next;
     });
   };
 

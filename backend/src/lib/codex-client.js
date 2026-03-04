@@ -167,7 +167,7 @@ function resolveCodexModelCandidates() {
     process.env.OPENAI_AUTOPILOT_FALLBACK_MODEL,
     process.env.OPENAI_PAIR_MODEL,
     process.env.OPENAI_FAST_MODEL,
-    "gpt-4.1-mini",
+    "gpt-5-codex",
   ]
     .map((item) => String(item || "").trim())
     .filter(Boolean);

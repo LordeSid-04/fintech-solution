@@ -52,7 +52,7 @@ type AIPanelProps = {
   onRenameSelectedFile?: (currentPath: string, nextPath: string) => void;
   editorRevision?: number;
   onRunGenerated: (result: MockRunResult) => void;
-  onGeneratedFiles?: (files: Record<string, string>) => void;
+  onGeneratedFiles?: (files: Record<string, string>, options?: { streaming?: boolean }) => void;
   onGeneratedPreview?: (html: string) => void;
   onRunStart?: () => void;
   showWorkspaceViews?: boolean;
@@ -305,6 +305,8 @@ export function AIPanel({
   const [isLoadingApprovalHistory, setIsLoadingApprovalHistory] = useState(false);
   const [viewerHeight, setViewerHeight] = useState(340);
   const [isResizingViewer, setIsResizingViewer] = useState(false);
+  const [runStartedAtMs, setRunStartedAtMs] = useState<number | null>(null);
+  const [responseElapsedMs, setResponseElapsedMs] = useState(0);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const autoResponseFollowRef = useRef(false);
   const userOverrodeResponseRef = useRef(false);
@@ -443,6 +445,19 @@ export function AIPanel({
   }, []);
 
   useEffect(() => {
+    if (!isSubmitting || runStartedAtMs === null) {
+      return;
+    }
+    setResponseElapsedMs(Math.max(0, Date.now() - runStartedAtMs));
+    const timer = window.setInterval(() => {
+      setResponseElapsedMs(Math.max(0, Date.now() - runStartedAtMs));
+    }, 100);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [isSubmitting, runStartedAtMs]);
+
+  useEffect(() => {
     runLogsRef.current = runLogs;
   }, [runLogs]);
 
@@ -497,8 +512,11 @@ export function AIPanel({
     approvals: ApprovalRecord[] = [],
     breakGlass?: BreakGlassPayload
   ) => {
+    const runStartedAt = Date.now();
     flushQueuedStreamUpdates();
     setIsSubmitting(true);
+    setRunStartedAtMs(runStartedAt);
+    setResponseElapsedMs(0);
     onRunStart?.();
     setTimeline([]);
     setProofs([]);
@@ -596,7 +614,7 @@ export function AIPanel({
           if (event.type === "generated_files") {
             hasStreamOutput = true;
             if (mode !== "pair") {
-              onGeneratedFiles?.(event.files);
+              onGeneratedFiles?.(event.files, { streaming: false });
             } else {
               setPairPendingFiles((prev) => ({ ...prev, ...event.files }));
             }
@@ -608,6 +626,30 @@ export function AIPanel({
             queueStreamUiUpdate({
               logLines: [`[developer] Generated ${count} file(s) from your prompt.`],
             });
+            maybeAutoSwitchToResponse();
+            return;
+          }
+          if (event.type === "generated_file_chunk") {
+            hasStreamOutput = true;
+            if (mode !== "pair") {
+              onGeneratedFiles?.(
+                {
+                  [event.path]: event.content,
+                },
+                { streaming: true }
+              );
+            } else {
+              setPairPendingFiles((prev) => ({ ...prev, [event.path]: event.content }));
+            }
+            setResponseSummary((prev) => ({
+              ...prev,
+              generatedFiles: { ...prev.generatedFiles, [event.path]: event.content },
+            }));
+            if (event.done) {
+              queueStreamUiUpdate({
+                logLines: [`[developer] Finished streaming ${event.path}`],
+              });
+            }
             maybeAutoSwitchToResponse();
             return;
           }
@@ -792,6 +834,7 @@ export function AIPanel({
     } finally {
       flushQueuedStreamUpdates();
       stopResponseProgressUpdates();
+      setResponseElapsedMs(Math.max(0, Date.now() - runStartedAt));
       autoResponseFollowRef.current = false;
       setIsSubmitting(false);
     }
@@ -1376,7 +1419,7 @@ export function AIPanel({
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    onGeneratedFiles?.(pairPendingFiles);
+                                    onGeneratedFiles?.(pairPendingFiles, { streaming: false });
                                     setPairDecision("approved");
                                     setPairPendingFiles({});
                                   }}
@@ -1538,6 +1581,8 @@ export function AIPanel({
                     riskLabel={runRiskLabel}
                     findings={findings}
                     riskDetails={runRiskDetails}
+                    responseElapsedMs={responseElapsedMs}
+                    isRunning={isSubmitting}
                   />
                 ) : null}
                 {viewerTab === "logs" ? (

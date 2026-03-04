@@ -247,6 +247,41 @@ function startStageProgressTicker(emit, { agentRole, stage, message, intervalMs 
   return () => clearInterval(timer);
 }
 
+function emitGeneratedFileChunks(emit, generatedFiles) {
+  if (!generatedFiles || typeof generatedFiles !== "object") {
+    return;
+  }
+  const entries = Object.entries(generatedFiles);
+  for (const [path, content] of entries) {
+    const fullContent = String(content || "");
+    const chunkSize = 260;
+    if (!path) continue;
+    if (!fullContent.length) {
+      emit({
+        type: "generated_file_chunk",
+        path,
+        content: "",
+        done: true,
+      });
+      continue;
+    }
+    for (let cursor = chunkSize; cursor < fullContent.length; cursor += chunkSize) {
+      emit({
+        type: "generated_file_chunk",
+        path,
+        content: fullContent.slice(0, cursor),
+        done: false,
+      });
+    }
+    emit({
+      type: "generated_file_chunk",
+      path,
+      content: fullContent,
+      done: true,
+    });
+  }
+}
+
 async function executePipeline({
   prompt,
   actor = "demo-user",
@@ -452,6 +487,7 @@ async function executePipeline({
     proof: developer.proof,
   });
   if (developer.artifact.generatedFiles && typeof developer.artifact.generatedFiles === "object") {
+    emitGeneratedFileChunks(emit, developer.artifact.generatedFiles);
     emit({
       type: "generated_files",
       files: developer.artifact.generatedFiles,

@@ -46,6 +46,8 @@ Additional route:
 - Workspace viewer now includes a dedicated `Response` tab (alongside Preview/Editor/Diff/Logs) for readable model output.
 - Response tab renders generated code with in-browser syntax highlighting for a more IDE-authentic review flow.
 - In `Autopilot` (`100% confidence`), the UI now auto-switches to `Response` as soon as streaming starts, and live agent output updates smoothly in real time.
+- `Autopilot` now streams per-file generation progress (`generated_file_chunk`) so files appear and fill in real time while generation is running.
+- Response tab now includes a live response timer and a file picker to inspect one generated file at a time without scrolling through all files.
 - Response tab now includes an intent-fit checklist (chatbot/website/dashboard/app) so users can quickly verify the generated output matches the original prompt intent.
 - Timeline now includes Approval history (from backend ledger) with approvers and Break-glass context.
 - Confidence slider snaps to `0`, `50`, `100`; modes map to Assist `0`, Pair `50`, Autopilot `100`.
@@ -90,6 +92,7 @@ If quality is low or runs fail, check backend configuration first:
 
 1. Set `OPENAI_API_KEY` in backend env.
 2. Ensure selected model names are available for your account:
+   - Defaults are now Codex-first (`OPENAI_CODEX_MODEL` / `OPENAI_MODEL` / `OPENAI_ASSIST_MODEL` / `OPENAI_PAIR_MODEL` set to `gpt-5-codex` in `backend/.env.example`).
    - `OPENAI_ASSIST_MODEL`
    - `OPENAI_PAIR_MODEL`
    - `OPENAI_CODEX_MODEL`
