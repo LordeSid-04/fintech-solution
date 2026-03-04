@@ -1,5 +1,6 @@
 import {
   buildAssistCompanionPrompt,
+  buildScopedExecutionPrompt,
   buildQuickAssistResponse,
   isCompanionOnlyConfidence,
 } from "./assist-companion";
@@ -27,6 +28,28 @@ describe("assist companion helpers", () => {
 
   it("returns empty prompt when no question and no selection", () => {
     expect(buildAssistCompanionPrompt({ question: "   " })).toBe("");
+  });
+
+  it("builds scoped execution prompt for pair/autopilot when selection exists", () => {
+    const prompt = buildScopedExecutionPrompt({
+      question: "Refactor this function",
+      selectedFile: "src/app.ts",
+      selectedCode: "const x = 1;",
+      mode: "pair",
+    });
+    expect(prompt).toContain("Execution mode: Pair (50%)");
+    expect(prompt).toContain("Selected file: src/app.ts");
+    expect(prompt).toContain("only operate on the selected text");
+    expect(prompt).toContain("const x = 1;");
+  });
+
+  it("returns original question for scoped execution when no selection", () => {
+    const prompt = buildScopedExecutionPrompt({
+      question: "Implement dashboard page",
+      selectedCode: "",
+      mode: "autopilot",
+    });
+    expect(prompt).toBe("Implement dashboard page");
   });
 
   it("builds quick local companion response with relevant snippet", () => {

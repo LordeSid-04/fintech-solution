@@ -22,6 +22,13 @@ export type ScopedAssistContext = {
   selectedCode?: string;
 };
 
+export type ScopedExecutionContext = {
+  question: string;
+  selectedFile?: string;
+  selectedCode?: string;
+  mode: "pair" | "autopilot";
+};
+
 export type QuickAssistContext = {
   question: string;
   selectedFile?: string;
@@ -85,6 +92,38 @@ export function buildAssistCompanionPrompt({
     "2) Improved snippet for this section only",
     "3) Optional unified diff preview (for this file section only)",
     "4) Suggested tests/commands (do not execute)",
+  ].join("\n");
+}
+
+export function buildScopedExecutionPrompt({
+  question,
+  selectedFile,
+  selectedCode,
+  mode,
+}: ScopedExecutionContext): string {
+  const trimmedQuestion = String(question || "").trim();
+  const trimmedSelection = String(selectedCode || "").trim();
+  if (!trimmedQuestion && !trimmedSelection) {
+    return "";
+  }
+  if (!trimmedSelection) {
+    return trimmedQuestion;
+  }
+
+  const fileLine = selectedFile ? `Selected file: ${selectedFile}` : "Selected file: current editor buffer";
+  const modeLine = mode === "autopilot" ? "Autopilot (100%)" : "Pair (50%)";
+  return [
+    `Execution mode: ${modeLine}`,
+    fileLine,
+    "Selected text scope:",
+    "```",
+    trimmedSelection,
+    "```",
+    "",
+    `User request: ${trimmedQuestion || "Improve the selected text safely."}`,
+    "",
+    "Scope rule (hard requirement): only operate on the selected text when selection is provided.",
+    "If broader changes are required, explain why and stop at a proposal instead of editing outside scope.",
   ].join("\n");
 }
 
