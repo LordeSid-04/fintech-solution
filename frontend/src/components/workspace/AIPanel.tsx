@@ -311,6 +311,9 @@ export function AIPanel({
   const pendingLogLinesRef = useRef<string[]>([]);
   const pendingResponseLinesRef = useRef<string[]>([]);
   const streamFlushTimerRef = useRef<number | null>(null);
+  const responseProgressTimerRef = useRef<number | null>(null);
+  const runLogsRef = useRef<string[]>([]);
+  const responseProgressCursorRef = useRef(0);
   const showPreviewTab = mode === "autopilot";
 
   const flushQueuedStreamUpdates = useCallback(() => {
@@ -351,6 +354,39 @@ export function AIPanel({
     [flushQueuedStreamUpdates]
   );
 
+  const stopResponseProgressUpdates = useCallback(() => {
+    if (responseProgressTimerRef.current !== null) {
+      window.clearInterval(responseProgressTimerRef.current);
+      responseProgressTimerRef.current = null;
+    }
+  }, []);
+
+  const pushResponseProgressFromLogs = useCallback(() => {
+    const logs = runLogsRef.current;
+    if (!logs.length) return;
+    const unread = logs.slice(responseProgressCursorRef.current);
+    const latestMeaningful =
+      [...unread]
+        .reverse()
+        .find((line) => line.trim() && !line.startsWith("[prompt]")) ||
+      [...logs].reverse().find((line) => line.trim());
+    responseProgressCursorRef.current = logs.length;
+    if (!latestMeaningful) return;
+    setResponseSummary((prev) => ({
+      ...prev,
+      streamLines: appendStreamLines(prev.streamLines, [
+        `[system] Progress update: ${latestMeaningful}`,
+      ]),
+    }));
+  }, []);
+
+  const startResponseProgressUpdates = useCallback(() => {
+    stopResponseProgressUpdates();
+    responseProgressTimerRef.current = window.setInterval(() => {
+      pushResponseProgressFromLogs();
+    }, 30000);
+  }, [pushResponseProgressFromLogs, stopResponseProgressUpdates]);
+
   useEffect(() => {
     if (!isResizingViewer) {
       return;
@@ -387,11 +423,19 @@ export function AIPanel({
       if (streamFlushTimerRef.current !== null) {
         window.clearTimeout(streamFlushTimerRef.current);
       }
+      if (responseProgressTimerRef.current !== null) {
+        window.clearInterval(responseProgressTimerRef.current);
+      }
       streamFlushTimerRef.current = null;
+      responseProgressTimerRef.current = null;
       pendingLogLinesRef.current = [];
       pendingResponseLinesRef.current = [];
     };
   }, []);
+
+  useEffect(() => {
+    runLogsRef.current = runLogs;
+  }, [runLogs]);
 
   useEffect(() => {
     if (mode === "autopilot") {
@@ -455,7 +499,9 @@ export function AIPanel({
       assistantReply: "",
       rationale: "",
       generatedFiles: {},
-      streamLines: [],
+      streamLines: [
+        "[system] This process usually takes a while. Real-time progress is shown in Logs, and updates will appear here every 30 seconds.",
+      ],
       highlightedSnippet: "",
       matchedTerms: [],
       contentFlags: [],
@@ -473,12 +519,16 @@ export function AIPanel({
     });
     setPairCopied(false);
     setPairDecision(null);
-    setRunLogs([
+    const initialRunLogs = [
       `[prompt] ${promptInput}`,
       approvals.length
         ? `[governance] approval context attached (${approvals.length} approver(s))`
         : "[system] Starting governed CodexGo pipeline...",
-    ]);
+    ];
+    setRunLogs(initialRunLogs);
+    runLogsRef.current = initialRunLogs;
+    responseProgressCursorRef.current = initialRunLogs.length;
+    startResponseProgressUpdates();
     let hasStreamOutput = false;
     try {
       const seenTimelineIds = new Set<string>();
@@ -504,10 +554,6 @@ export function AIPanel({
             hasStreamOutput = true;
             queueStreamUiUpdate({
               logLines: [`[${event.agentRole.toLowerCase()}] ${event.stage}`, event.content],
-              responseLines: [
-                `[${event.agentRole}] ${event.stage}`,
-                event.content,
-              ],
             });
             if (
               mode !== "autopilot" &&
@@ -534,7 +580,6 @@ export function AIPanel({
             hasStreamOutput = true;
             queueStreamUiUpdate({
               logLines: [`[${event.agentRole.toLowerCase()}] ${event.message}`],
-              responseLines: [`[${event.agentRole}] ${event.message}`],
             });
             maybeAutoSwitchToResponse();
             return;
@@ -553,7 +598,6 @@ export function AIPanel({
             const count = Object.keys(event.files).length;
             queueStreamUiUpdate({
               logLines: [`[developer] Generated ${count} file(s) from your prompt.`],
-              responseLines: [`[DEVELOPER] Generated ${count} file(s).`],
             });
             maybeAutoSwitchToResponse();
             return;
@@ -562,7 +606,6 @@ export function AIPanel({
             onGeneratedPreview?.(event.html);
             queueStreamUiUpdate({
               logLines: ["[developer] Generated a live preview for this app."],
-              responseLines: ["[DEVELOPER] Generated preview HTML."],
             });
             maybeAutoSwitchToResponse();
             return;
@@ -705,9 +748,14 @@ export function AIPanel({
           assistantReply: runResult.artifacts?.diff?.assistantReply ?? "",
           rationale: runResult.artifacts?.diff?.rationale ?? "",
           generatedFiles: runResult.artifacts?.diff?.generatedFiles ?? {},
-          streamLines: runResult.artifacts?.diff?.assistantReply
-            ? [runResult.artifacts.diff.assistantReply]
-            : [],
+          streamLines: appendStreamLines(
+            [
+              "[system] This process usually takes a while. Real-time progress is shown in Logs, and updates will appear here every 30 seconds.",
+            ],
+            runResult.artifacts?.diff?.assistantReply
+              ? [runResult.artifacts.diff.assistantReply]
+              : ["[SYSTEM] Final response ready."]
+          ),
           highlightedSnippet: "",
           matchedTerms: [],
           contentFlags: runResult.artifacts?.diff?.contentFlags ?? [],
@@ -734,6 +782,7 @@ export function AIPanel({
       }
     } finally {
       flushQueuedStreamUpdates();
+      stopResponseProgressUpdates();
       autoResponseFollowRef.current = false;
       setIsSubmitting(false);
     }

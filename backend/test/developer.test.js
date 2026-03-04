@@ -268,6 +268,35 @@ test("autopilot quality gate requires stronger quality for website prompts", () 
   assert.equal(__test.isHighQualityAutopilotArtifact(prompt, strongArtifact, "website"), true);
 });
 
+test("autopilot quality gate rejects garbled encoding artifacts", () => {
+  const prompt = 'build me a company website. company name is "MNB".';
+  const artifact = {
+    assistantReply: "Built MNB website.",
+    rationale: "Good structure.",
+    generatedFiles: {
+      "src/app/page.tsx": "<h1>MNB â€™ platform</h1> services about contact testimonials hero",
+      "src/app/layout.tsx": "layout",
+      "src/app/globals.css": "styles @media",
+      "preview/index.html": "<h1>MNB â€™ platform</h1>",
+    },
+  };
+  assert.equal(__test.hasCorruptedEncodingText(artifact), true);
+  assert.equal(__test.isHighQualityAutopilotArtifact(prompt, artifact, "website"), false);
+});
+
+test("build quality gate rejects unexpected resume templates", () => {
+  const prompt = "build me a crm website";
+  const artifact = {
+    generatedFiles: {
+      "src/app/page.tsx": "<h1>Accelerate the roadmap</h1><a>Download Resume</a><a>Book a Call</a>",
+      "src/app/layout.tsx": "layout",
+      "src/app/globals.css": "styles",
+    },
+  };
+  assert.equal(__test.hasUnexpectedResumeTemplate(prompt, artifact), true);
+  assert.equal(__test.isLowQualityBuildArtifact(prompt, artifact), true);
+});
+
 test("autopilot recovery artifact returns deterministic premium scaffold", () => {
   const artifact = __test.buildAutopilotRecoveryArtifact(
     'build me a CRM website. company name is "Acme CRM".',

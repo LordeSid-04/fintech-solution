@@ -629,6 +629,20 @@ function hasUnexpectedPortfolioTemplate(prompt, artifact) {
   return text.includes("portfolio") || text.includes("featured project");
 }
 
+function hasCorruptedEncodingText(artifact) {
+  const text = flattenArtifactRawText(artifact);
+  return /�|â€™|â€œ|â€|â€“|â€”|Ã|Â/.test(text);
+}
+
+function hasUnexpectedResumeTemplate(prompt, artifact) {
+  const promptText = String(prompt || "").toLowerCase();
+  if (/(resume|cv|curriculum vitae|portfolio)/i.test(promptText)) {
+    return false;
+  }
+  const text = flattenArtifactText(artifact);
+  return text.includes("download resume") || text.includes("book a call");
+}
+
 function extractCompanyName(prompt) {
   const explicitBrand = extractExplicitBrandName(prompt);
   if (explicitBrand) return explicitBrand;
@@ -1323,6 +1337,8 @@ function hasRequestedWebsiteSectionCoverage(prompt, artifact) {
 function isHighQualityAutopilotArtifact(prompt, artifact, intent) {
   const grounded = isArtifactGroundedToPrompt(prompt, artifact) && !hasUnexpectedPortfolioTemplate(prompt, artifact);
   if (!grounded) return false;
+  if (hasCorruptedEncodingText(artifact)) return false;
+  if (hasUnexpectedResumeTemplate(prompt, artifact)) return false;
   if (!hasExactBrandMatch(prompt, artifact)) return false;
   if (intent === "website" && !hasRequestedWebsiteSectionCoverage(prompt, artifact)) return false;
   const score = scoreArtifactQualityByIntent(prompt, artifact, intent);
@@ -1429,7 +1445,9 @@ function isLowQualityBuildArtifact(prompt, artifact) {
   const combined = flattenArtifactText(artifact);
   if (fileCount < 3) return true;
   if (combined.includes("lorem ipsum")) return true;
+  if (hasCorruptedEncodingText(artifact)) return true;
   if (hasUnexpectedPortfolioTemplate(prompt, artifact)) return true;
+  if (hasUnexpectedResumeTemplate(prompt, artifact)) return true;
   const hasCoreAppFile =
     Boolean(generatedFiles["src/app/page.tsx"]) ||
     Boolean(generatedFiles["preview/index.html"]) ||
@@ -1835,6 +1853,8 @@ module.exports = {
     deriveBrandLabel,
     buildPremiumFilesByIntent,
     isHighQualityAutopilotArtifact,
+    hasCorruptedEncodingText,
+    hasUnexpectedResumeTemplate,
     detectLogicalMismatchInSources,
     applyLogicalFixToContent,
     buildLogicalMismatchDeveloperArtifact,
