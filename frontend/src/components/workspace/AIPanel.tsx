@@ -113,6 +113,12 @@ function buildRunLogs(prompt: string, result: GovernedRunResult): string[] {
   return logs;
 }
 
+function isUnexpectedAgentPipeline(result: GovernedRunResult, mode: GovernanceMode): boolean {
+  if (mode === "autopilot") return false;
+  const agentOnlyRoles = new Set(["ARCHITECT", "VERIFIER", "OPERATOR", "GOVERNOR"]);
+  return (result.proofs ?? []).some((item) => agentOnlyRoles.has(item.proof.agentRole));
+}
+
 function appendStreamLines(previous: string[], additions: string[]): string[] {
   return [...previous, ...additions].slice(-160);
 }
@@ -566,6 +572,14 @@ export function AIPanel({
       setTimeline(runResult.timeline);
       setProofs(runResult.proofs ?? streamProofs);
       setRunLogs((prev) => [...prev, ...buildRunLogs(promptInput, runResult)].slice(-120));
+      if (isUnexpectedAgentPipeline(runResult, mode)) {
+        setRunLogs((prev) =>
+          [
+            ...prev,
+            "[system] Detected stale backend behavior: Assist/Pair request ran through agent stages. Verify NEXT_PUBLIC_BACKEND_URL points to the latest backend deployment.",
+          ].slice(-120)
+        );
+      }
       setResponseSummary((prev) => ({
         promptText: prev.promptText || promptInput,
         assistantReply: runResult.artifacts?.diff?.assistantReply ?? "",
@@ -651,6 +665,14 @@ export function AIPanel({
           evidenceQuotes: runResult.gate?.riskCard?.evidenceQuotes ?? [],
         });
         setRunLogs((prev) => [...prev, ...buildRunLogs(promptInput, runResult)].slice(-120));
+        if (isUnexpectedAgentPipeline(runResult, mode)) {
+          setRunLogs((prev) =>
+            [
+              ...prev,
+              "[system] Detected stale backend behavior: Assist/Pair request ran through agent stages. Verify NEXT_PUBLIC_BACKEND_URL points to the latest backend deployment.",
+            ].slice(-120)
+          );
+        }
         setResponseSummary({
           promptText: promptInput,
           assistantReply: runResult.artifacts?.diff?.assistantReply ?? "",

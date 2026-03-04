@@ -104,6 +104,14 @@ export interface QuickAssistSuggestion {
   relevantSnippet: string;
 }
 
+function toCanonicalConfidencePercent(mode: GovernanceMode, confidencePercent: number): number {
+  if (mode === "assist") return 0;
+  if (mode === "pair") return 50;
+  if (mode === "autopilot") return 100;
+  const numeric = Number(confidencePercent);
+  return Number.isFinite(numeric) ? Math.max(0, Math.min(100, Math.round(numeric))) : 50;
+}
+
 export type PipelineStreamEvent =
   | { type: "run_started"; runId: string; timestamp: string }
   | { type: "heartbeat"; timestamp: string }
@@ -184,6 +192,7 @@ export async function runGovernedPipeline(
   breakGlass?: BreakGlassPayload
 ): Promise<GovernedRunResult> {
   const baseUrl = resolveBackendBaseUrl();
+  const canonicalConfidencePercent = toCanonicalConfidencePercent(mode, confidencePercent);
   const response = await fetch(`${baseUrl}/api/orchestrator/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -193,7 +202,7 @@ export async function runGovernedPipeline(
       approvals,
       breakGlass,
       confidenceMode: mode,
-      confidencePercent,
+      confidencePercent: canonicalConfidencePercent,
       projectFiles: projectFiles ?? {},
     }),
   });
@@ -215,6 +224,7 @@ export async function streamGovernedPipeline(
   breakGlass?: BreakGlassPayload
 ): Promise<GovernedRunResult> {
   const baseUrl = resolveBackendBaseUrl();
+  const canonicalConfidencePercent = toCanonicalConfidencePercent(mode, confidencePercent);
   const response = await fetch(`${baseUrl}/api/orchestrator/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -224,7 +234,7 @@ export async function streamGovernedPipeline(
       approvals,
       breakGlass,
       confidenceMode: mode,
-      confidencePercent,
+      confidencePercent: canonicalConfidencePercent,
       projectFiles: projectFiles ?? {},
     }),
   });
