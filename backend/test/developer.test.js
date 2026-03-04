@@ -262,6 +262,17 @@ test("autopilot quality gate requires stronger quality for website prompts", () 
   assert.equal(__test.isHighQualityAutopilotArtifact(prompt, strongArtifact, "website"), true);
 });
 
+test("autopilot recovery artifact returns deterministic premium scaffold", () => {
+  const artifact = __test.buildAutopilotRecoveryArtifact(
+    'build me a CRM website. company name is "Acme CRM".',
+    "website"
+  );
+  assert.ok(artifact.generatedFiles["src/app/page.tsx"]);
+  assert.ok(artifact.generatedFiles["src/app/layout.tsx"]);
+  assert.ok(artifact.previewHtml.includes("<!doctype html>"));
+  assert.match(artifact.rationale, /deterministic premium scaffold recovery artifact/i);
+});
+
 test("detects and fixes square mismatch for non-build prompts", () => {
   const mismatch = __test.detectLogicalMismatchInSources(
     "Why is square() not working?",
