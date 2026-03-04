@@ -146,6 +146,16 @@ export type PipelineStreamEvent =
   | { type: "run_completed"; result: GovernedRunResult }
   | { type: "run_error"; message: string };
 
+function parsePipelineStreamLine(line: string): PipelineStreamEvent | null {
+  const trimmed = String(line || "").trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed) as PipelineStreamEvent;
+  } catch {
+    return null;
+  }
+}
+
 export function toApprovalHistoryEntries(events: GovernanceLedgerEvent[]): ApprovalHistoryEntry[] {
   return events
     .filter((event) => event.agentRole === "GOVERNOR")
@@ -263,9 +273,21 @@ export async function streamGovernedPipeline(
     buffer = lines.pop() ?? "";
 
     for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      const event = JSON.parse(trimmed) as PipelineStreamEvent;
+      const event = parsePipelineStreamLine(line);
+      if (!event) continue;
+      onEvent(event);
+      if (event.type === "run_completed") {
+        finalResult = event.result;
+      }
+      if (event.type === "run_error") {
+        throw new Error(event.message);
+      }
+    }
+  }
+
+  if (buffer.trim()) {
+    const event = parsePipelineStreamLine(buffer);
+    if (event) {
       onEvent(event);
       if (event.type === "run_completed") {
         finalResult = event.result;
@@ -281,3 +303,7 @@ export async function streamGovernedPipeline(
   }
   return finalResult;
 }
+
+export const __test = {
+  parsePipelineStreamLine,
+};

@@ -757,9 +757,18 @@ export function AIPanel({
       }
       await refreshApprovalHistory();
       return runResult;
-    } catch {
+    } catch (error) {
+      const streamErrorMessage =
+        error instanceof Error && error.message.trim()
+          ? error.message.trim()
+          : "unknown stream error";
       try {
-        setRunLogs((prev) => [...prev, "[system] Stream unavailable. Retrying with standard backend run..."].slice(-120));
+        setRunLogs((prev) =>
+          [
+            ...prev,
+            `[system] Stream unavailable (${streamErrorMessage}). Retrying with standard backend run...`,
+          ].slice(-120)
+        );
         const runResult = await runGovernedPipeline(
           promptInput,
           mode,
