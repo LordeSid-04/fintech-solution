@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { inferCodeLanguage } from "@/lib/syntax";
@@ -50,7 +50,7 @@ function renderRiskHighlightedText(
     .sort((a, b) => a.start - b.start);
   if (!ranges.length) return text;
 
-  const chunks: Array<JSX.Element | string> = [];
+  const chunks: ReactNode[] = [];
   let cursor = 0;
   ranges.forEach((range, index) => {
     if (range.start < cursor) return;

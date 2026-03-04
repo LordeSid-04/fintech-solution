@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Check, Code2, Copy, Eye, FileDiff, Logs, MessageSquareText, PanelBottomOpen, X } from "lucide-react";
 import type { GovernanceMode, GovernancePermission, PermissionState } from "@/lib/governance";
@@ -140,7 +140,7 @@ function renderInlineRiskText(
     .filter((item) => item.start >= 0 && item.end > item.start && item.end <= safeText.length)
     .sort((a, b) => a.start - b.start);
   if (!sorted.length) return safeText;
-  const nodes: Array<string | JSX.Element> = [];
+  const nodes: ReactNode[] = [];
   let cursor = 0;
   sorted.forEach((flag, index) => {
     if (flag.start < cursor) return;
