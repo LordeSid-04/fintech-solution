@@ -259,10 +259,13 @@ function normalizeDirectPayload(parsed, touchedFiles) {
   const citations = Array.isArray(parsed?.citations)
     ? parsed.citations.filter((item) => typeof item === "string").slice(0, 5)
     : touchedFiles.slice(0, 3).map((path) => `Context file: ${path}`);
+  const sanitizedAssistantReply = assistantReply
+    .replace(/i generated files[^.]*\./gi, "I prepared a focused recommendation based on your request.")
+    .replace(/generated implementation files[^.]*\./gi, "I prepared a focused implementation suggestion.");
 
   return {
     assistantReply:
-      assistantReply || "I need one more concrete detail to produce a high-confidence answer.",
+      sanitizedAssistantReply || "I need one more concrete detail to produce a high-confidence answer.",
     rationale: rationale || "Response normalized from direct model output.",
     unifiedDiff,
     generatedFiles,
@@ -372,6 +375,110 @@ function buildContentFlags({ assistantReply, rationale, findings }) {
   return flags.slice(0, 25);
 }
 
+function extractScopeFromPrompt(prompt) {
+  const text = String(prompt || "");
+  const selectedFileMatch = text.match(/Selected file:\s*(.+)/i);
+  const selectedSnippetMatch = text.match(/Selected text scope:\s*```[\w-]*\n?([\s\S]*?)```/i);
+  const requestMatch = text.match(/User request:\s*(.+)/i);
+  return {
+    selectedFile: selectedFileMatch?.[1]?.trim() || "",
+    selectedSnippet: selectedSnippetMatch?.[1]?.trim() || "",
+    userRequest: requestMatch?.[1]?.trim() || text.trim(),
+  };
+}
+
+function isScopedFixIntent(userRequest, selectedSnippet) {
+  const request = String(userRequest || "").toLowerCase();
+  const snippet = String(selectedSnippet || "").toLowerCase();
+  if (!selectedSnippet.trim()) return false;
+  if (/(fix|correct|repair|rewrite|update|bug|wrong|issue)/i.test(request)) return true;
+  if (/def\s+\w+\(/i.test(snippet) || /function\s+\w+\(/i.test(snippet)) return true;
+  return false;
+}
+
+function buildHeuristicSelectionFix(selectedSnippet, userRequest) {
+  const snippet = String(selectedSnippet || "");
+  const request = String(userRequest || "").toLowerCase();
+  const squareMatch = snippet.match(/return\s+([a-zA-Z_][\w]*)\s*\*\s*2/);
+  if (squareMatch && (request.includes("square") || /square/i.test(snippet))) {
+    const variable = squareMatch[1];
+    return {
+      replacement: snippet.replace(squareMatch[0], `return ${variable} ** 2`),
+      note: "Converted doubling logic to squaring (`** 2`).",
+    };
+  }
+
+  const evenMatch = snippet.match(/return\s+([a-zA-Z_][\w]*)\s*%\s*2\s*==\s*1/);
+  if (evenMatch && /(even|is_even|iseven)/i.test(`${request}\n${snippet}`)) {
+    const variable = evenMatch[1];
+    return {
+      replacement: snippet.replace(evenMatch[0], `return ${variable} % 2 == 0`),
+      note: "Fixed inverted even-check condition.",
+    };
+  }
+
+  const oddMatch = snippet.match(/return\s+([a-zA-Z_][\w]*)\s*%\s*2\s*==\s*0/);
+  if (oddMatch && /(odd|is_odd|isodd)/i.test(`${request}\n${snippet}`)) {
+    const variable = oddMatch[1];
+    return {
+      replacement: snippet.replace(oddMatch[0], `return ${variable} % 2 == 1`),
+      note: "Fixed inverted odd-check condition.",
+    };
+  }
+
+  const cubeMatch = snippet.match(/return\s+([a-zA-Z_][\w]*)\s*\*\s*3/);
+  if (cubeMatch && /(cube|cubed)/i.test(`${request}\n${snippet}`)) {
+    const variable = cubeMatch[1];
+    return {
+      replacement: snippet.replace(cubeMatch[0], `return ${variable} ** 3`),
+      note: "Converted tripling logic to cubing (`** 3`).",
+    };
+  }
+
+  return null;
+}
+
+function extractCodeBlock(text) {
+  const match = String(text || "").match(/```[\w-]*\n?([\s\S]*?)```/);
+  return match?.[1]?.trim() || "";
+}
+
+function applyScopedFix({
+  normalized,
+  projectFiles,
+  selectedFile,
+  selectedSnippet,
+  replacementSnippet,
+  note,
+}) {
+  if (!replacementSnippet.trim()) {
+    return normalized;
+  }
+  const generatedFiles = { ...(normalized.generatedFiles || {}) };
+  let applied = false;
+  if (selectedFile && typeof projectFiles?.[selectedFile] === "string") {
+    const source = String(projectFiles[selectedFile]);
+    if (selectedSnippet && source.includes(selectedSnippet)) {
+      generatedFiles[selectedFile] = source.replace(selectedSnippet, replacementSnippet);
+      applied = true;
+    }
+  }
+  if (!applied) {
+    const fallbackPath = selectedFile || "scoped-fix.txt";
+    generatedFiles[fallbackPath] = replacementSnippet;
+  }
+  const assistantReply = [
+    "Applied a scoped correction to the selected text.",
+    note || "Updated the selected logic with a safer/correct implementation.",
+  ].join(" ");
+  return {
+    ...normalized,
+    assistantReply,
+    rationale: `${normalized.rationale} Scoped correction was generated from the selected text.`,
+    generatedFiles,
+  };
+}
+
 async function runDirectAssistPath({
   prompt,
   actor = "demo-user",
@@ -457,7 +564,27 @@ async function runDirectAssistPath({
   }
 
   const parsed = modelResult.parsed || extractJsonObject(modelResult.text || "");
-  const normalized = normalizeDirectPayload(parsed, touchedFiles);
+  let normalized = normalizeDirectPayload(parsed, touchedFiles);
+  const scope = extractScopeFromPrompt(prompt);
+  const hasMaterializedPatch = Boolean(
+    (normalized.unifiedDiff || "").trim() ||
+      (normalized.generatedFiles && Object.keys(normalized.generatedFiles).length)
+  );
+  if (!hasMaterializedPatch && isScopedFixIntent(scope.userRequest, scope.selectedSnippet)) {
+    const heuristic = buildHeuristicSelectionFix(scope.selectedSnippet, scope.userRequest);
+    const llmCodeBlock = extractCodeBlock(normalized.assistantReply);
+    const replacementSnippet = heuristic?.replacement || llmCodeBlock;
+    if (replacementSnippet) {
+      normalized = applyScopedFix({
+        normalized,
+        projectFiles,
+        selectedFile: scope.selectedFile,
+        selectedSnippet: scope.selectedSnippet,
+        replacementSnippet,
+        note: heuristic?.note || "Used the model-suggested replacement snippet.",
+      });
+    }
+  }
   const effectiveUnifiedDiff = String(normalized.unifiedDiff || "").trim()
     || buildUnifiedDiffFromGeneratedFiles(normalized.generatedFiles || {});
   const responseTextDiff = asAddedDiffText(

@@ -82,6 +82,34 @@ test("pipeline uses direct non-agent path at 50 percent", async () => {
   assert.ok(typeof result.gate.riskScore === "number");
 });
 
+test("pair direct mode returns scoped fix artifact for selected function correction", async () => {
+  const scopedPrompt = [
+    "Execution mode: Pair (50%)",
+    "Selected file: src/math.py",
+    "Selected text scope:",
+    "```",
+    "def square(x):",
+    "  return x * 2",
+    "```",
+    "",
+    "User request: generate corrected version of this function",
+  ].join("\n");
+
+  const result = await runPipeline({
+    prompt: scopedPrompt,
+    actor: "test-user",
+    confidenceMode: "pair",
+    confidencePercent: 50,
+    projectFiles: {
+      "src/math.py": "def square(x):\n  return x * 2\nprint(square(3))",
+    },
+  });
+
+  const files = result.artifacts?.diff?.generatedFiles || {};
+  assert.ok(Object.keys(files).length >= 1);
+  assert.ok(String(files["src/math.py"] || "").includes("** 2"));
+});
+
 test("stream pipeline emits human control requirement events", async () => {
   const seenEventTypes = [];
   await streamPipeline({
