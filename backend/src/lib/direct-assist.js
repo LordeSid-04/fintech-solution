@@ -131,30 +131,46 @@ async function callOpenAI({ model, systemPrompt, userPrompt, timeoutMs, key }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model,
-        max_output_tokens: 1500,
-        input: [
-          {
-            role: "system",
-            content: [{ type: "input_text", text: systemPrompt }],
-          },
-          {
-            role: "user",
-            content: [{ type: "input_text", text: userPrompt }],
-          },
-        ],
-      }),
-    });
+    let response;
+    try {
+      response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model,
+          max_output_tokens: 1500,
+          input: [
+            {
+              role: "system",
+              content: [{ type: "input_text", text: systemPrompt }],
+            },
+            {
+              role: "user",
+              content: [{ type: "input_text", text: userPrompt }],
+            },
+          ],
+        }),
+      });
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        const timeoutError = new Error(
+          `Direct model request timed out after ${timeoutMs}ms. Increase DIRECT_MODEL_TIMEOUT_MS and retry.`
+        );
+        timeoutError.code = "TIMEOUT";
+        timeoutError.status = 504;
+        throw timeoutError;
+      }
+      throw error;
+    }
     if (!response.ok) {
-      throw new Error(`OpenAI API error ${response.status}`);
+      const providerError = new Error(`OpenAI API error ${response.status}`);
+      providerError.status = response.status;
+      providerError.code = response.status === 401 ? "INVALID_API_KEY" : "OPENAI_API_ERROR";
+      throw providerError;
     }
     const payload = await response.json();
     const text =
@@ -526,7 +542,7 @@ async function runDirectAssistPath({
   });
 
   const openAiKey = process.env.OPENAI_API_KEY;
-  const timeoutMs = Number(process.env.DIRECT_MODEL_TIMEOUT_MS || 20000);
+  const timeoutMs = Number(process.env.DIRECT_MODEL_TIMEOUT_MS || 35000);
   if (!openAiKey) {
     throw new Error(
       "OPENAI_API_KEY is missing. Configure backend OPENAI_API_KEY to enable companion and pair mode generation."
