@@ -54,6 +54,7 @@ Additional route:
 - Assist (`0`) companion responses are now local-first and selection-aware (fast think-box in editor; no forced Logs tab jump).
 - TypeScript/TSX run flow transpiles in-browser before execution; Python uses Pyodide sandbox execution.
 - Assist (`0`) now calls a fast backend OpenAI suggestion endpoint and renders a compact in-editor `Suggestions` box.
+- Auth UX now uses a single signup roundtrip when possible: backend signup returns a session so the client can skip a second login request.
 - Editor includes a terminal-style output panel that always shows run output (`(no output)` when nothing is emitted).
 - Confidence is stored per selected project from the confidence page project selector.
 - Workspace save flow supports in-app project persistence and optional `.zip` download export.

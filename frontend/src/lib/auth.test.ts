@@ -3,6 +3,7 @@ import {
   isNtuStudentEmail,
   isSingaporeMobileNumber,
   login,
+  signup,
   resolveBackendBaseUrl,
   validateSignupPayload,
 } from "@/lib/auth";
@@ -93,5 +94,39 @@ describe("auth api parsing", () => {
     await expect(login("ma0001th@e.ntu.edu.sg", "Siddhanth$04")).rejects.toThrow(
       "Login failed (status 502)."
     );
+  });
+
+  it("parses signup response with immediate session payload", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            user: {
+              id: "user-1",
+              firstName: "Ada",
+              lastName: "Lovelace",
+              email: "ada@e.ntu.edu.sg",
+              mobileNumber: "+6591234567",
+              createdAt: new Date().toISOString(),
+            },
+            session: {
+              token: "demo-session-1",
+              issuedAt: new Date().toISOString(),
+            },
+          }),
+          { status: 201, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    );
+    const result = await signup({
+      firstName: "Ada",
+      lastName: "Lovelace",
+      email: "ada@e.ntu.edu.sg",
+      mobileNumber: "+6591234567",
+      password: "password123",
+    });
+    expect(result.user.email).toBe("ada@e.ntu.edu.sg");
+    expect(result.session?.token).toBe("demo-session-1");
   });
 });

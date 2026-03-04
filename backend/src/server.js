@@ -91,6 +91,13 @@ function appendAuthLedgerEvent({ actionType, actor, resourcesTouched }) {
   }
 }
 
+function buildSessionPayload() {
+  return {
+    token: `demo-session-${Date.now()}`,
+    issuedAt: new Date().toISOString(),
+  };
+}
+
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url || "/", "http://localhost");
   const pathname = parsedUrl.pathname;
@@ -167,7 +174,10 @@ const server = http.createServer(async (req, res) => {
         actor: result.user.email,
         resourcesTouched: [getStorageResource()],
       });
-      sendJson(res, 201, { user: result.user });
+      sendJson(res, 201, {
+        user: result.user,
+        session: buildSessionPayload(),
+      });
       return;
     } catch (error) {
       sendJson(res, 500, { error: error.message || "unknown error" });
@@ -191,10 +201,7 @@ const server = http.createServer(async (req, res) => {
       });
       sendJson(res, 200, {
         user: result.user,
-        session: {
-          token: `demo-session-${Date.now()}`,
-          issuedAt: new Date().toISOString(),
-        },
+        session: buildSessionPayload(),
       });
       return;
     } catch (error) {

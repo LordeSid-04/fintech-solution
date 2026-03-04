@@ -27,6 +27,8 @@ type BackendUrlRuntime = {
   origin?: string;
 };
 
+const AUTH_REQUEST_TIMEOUT_MS = 10000;
+
 export function isNtuStudentEmail(email: string): boolean {
   return email.trim().toLowerCase().endsWith("@e.ntu.edu.sg");
 }
@@ -79,6 +81,16 @@ function networkErrorMessage(action: "signup" | "login", baseUrl: string): strin
   return `${actionLabel} could not reach the backend at ${baseUrl}. Set NEXT_PUBLIC_BACKEND_URL to your deployed backend API URL (required on Vercel) or to a reachable LAN backend in local testing.`;
 }
 
+async function fetchWithTimeout(input: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = globalThis.setTimeout(() => controller.abort(), AUTH_REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+  }
+}
+
 async function readAuthPayload<T extends object>(response: Response): Promise<T | null> {
   const raw = await response.text();
   if (!raw.trim()) {
@@ -91,39 +103,50 @@ async function readAuthPayload<T extends object>(response: Response): Promise<T 
   }
 }
 
-export async function signup(payload: SignupPayload): Promise<AuthUser> {
+export async function signup(
+  payload: SignupPayload
+): Promise<{ user: AuthUser; session?: AuthSession }> {
   const baseUrl = resolveBackendBaseUrl();
   let response: Response;
   try {
-    response = await fetch(`${baseUrl}/api/auth/signup`, {
+    response = await fetchWithTimeout(`${baseUrl}/api/auth/signup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
   } catch (error) {
-    if (error instanceof TypeError) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Sign up timed out. Please try again.");
+    }
+    if (error instanceof TypeError || error instanceof DOMException) {
       throw new Error(networkErrorMessage("signup", baseUrl));
     }
     throw error;
   }
-  const data = await readAuthPayload<{ user?: AuthUser; error?: string }>(response);
+  const data = await readAuthPayload<{ user?: AuthUser; session?: AuthSession; error?: string }>(response);
   if (!response.ok || !data?.user) {
     throw new Error(data?.error || `Signup failed (status ${response.status}).`);
   }
-  return data.user;
+  return {
+    user: data.user,
+    session: data.session,
+  };
 }
 
 export async function login(email: string, password: string): Promise<{ user: AuthUser; session: AuthSession }> {
   const baseUrl = resolveBackendBaseUrl();
   let response: Response;
   try {
-    response = await fetch(`${baseUrl}/api/auth/login`, {
+    response = await fetchWithTimeout(`${baseUrl}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
   } catch (error) {
-    if (error instanceof TypeError) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Login timed out. Please try again.");
+    }
+    if (error instanceof TypeError || error instanceof DOMException) {
       throw new Error(networkErrorMessage("login", baseUrl));
     }
     throw error;

@@ -27,6 +27,7 @@ export default function AuthPage() {
     setError("");
     setIsSubmitting(true);
     try {
+      let signupAuthResult: Awaited<ReturnType<typeof signup>> | null = null;
       if (mode === "signup") {
         const validationError = validateSignupPayload({
           firstName,
@@ -40,7 +41,7 @@ export default function AuthPage() {
           return;
         }
 
-        await signup({
+        signupAuthResult = await signup({
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           email: email.trim(),
@@ -49,7 +50,9 @@ export default function AuthPage() {
         });
       }
 
-      const loggedIn = await login(email.trim(), password);
+      const loggedIn = signupAuthResult?.session
+        ? { user: signupAuthResult.user, session: signupAuthResult.session }
+        : await login(email.trim(), password);
       storeSession(loggedIn.user, loggedIn.session);
       router.push("/confidence");
     } catch (submitError) {
