@@ -1602,7 +1602,7 @@ async function runDeveloperAgent({
   );
   const developerModelTimeoutMs = parsePositiveInt(
     process.env.DEVELOPER_MODEL_TIMEOUT_MS,
-    autopilotBuildMode ? 20000 : 30000
+    autopilotBuildMode ? 45000 : 30000
   );
   const developerModelMaxAttempts = parsePositiveInt(
     process.env.DEVELOPER_MODEL_MAX_ATTEMPTS,

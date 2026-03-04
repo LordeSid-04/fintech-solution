@@ -48,6 +48,7 @@ Additional route:
 - In `Autopilot` (`100% confidence`), the UI now auto-switches to `Response` as soon as streaming starts, and live agent output updates smoothly in real time.
 - `Autopilot` now streams per-file generation progress (`generated_file_chunk`) so files appear and fill in real time while generation is running.
 - Response tab now includes a live response timer and a file picker to inspect one generated file at a time without scrolling through all files.
+- Streaming now tolerates malformed NDJSON chunks client-side and backend stream reads enforce timeout guards to prevent 100% runs from hanging indefinitely without final completion.
 - Response tab now includes an intent-fit checklist (chatbot/website/dashboard/app) so users can quickly verify the generated output matches the original prompt intent.
 - Timeline now includes Approval history (from backend ledger) with approvers and Break-glass context.
 - Confidence slider snaps to `0`, `50`, `100`; modes map to Assist `0`, Pair `50`, Autopilot `100`.

@@ -218,7 +218,32 @@ function extractSseDataFrames(buffer) {
   return { frames, remaining };
 }
 
-async function readOpenAiStream(response, onTextDelta) {
+async function readWithTimeout(reader, timeoutMs) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return reader.read();
+  }
+  let timeoutId;
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(
+            new ModelProviderError(
+              "TIMEOUT",
+              `OpenAI stream read timed out after ${timeoutMs}ms.`,
+              408
+            )
+          );
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+async function readOpenAiStream(response, onTextDelta, timeoutMs) {
   if (!response.body) {
     const payload = await response.json();
     const text = extractOutputText(payload);
@@ -235,32 +260,53 @@ async function readOpenAiStream(response, onTextDelta) {
   let streamedText = "";
   let completedResponse = null;
   let responseId = "";
+  const streamStartedAt = Date.now();
+  const maxStreamDurationMs = Math.max(Number(timeoutMs) || 0, 12000);
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const { frames, remaining } = extractSseDataFrames(buffer);
-    buffer = remaining;
-    for (const frame of frames) {
-      if (!frame || frame === "[DONE]") continue;
-      let eventPayload;
-      try {
-        eventPayload = JSON.parse(frame);
-      } catch {
-        continue;
+  try {
+    while (true) {
+      const elapsed = Date.now() - streamStartedAt;
+      const remaining = maxStreamDurationMs - elapsed;
+      if (remaining <= 0) {
+        throw new ModelProviderError(
+          "TIMEOUT",
+          `OpenAI stream exceeded ${maxStreamDurationMs}ms without completion.`,
+          408
+        );
       }
-      responseId = responseId || String(eventPayload.response_id || eventPayload.id || "");
-      if (eventPayload?.type === "response.output_text.delta" && typeof eventPayload.delta === "string") {
-        streamedText += eventPayload.delta;
-        if (typeof onTextDelta === "function" && eventPayload.delta.trim()) {
-          onTextDelta(eventPayload.delta);
+      const readSliceTimeoutMs = Math.max(1000, Math.min(remaining, 15000));
+      const { done, value } = await readWithTimeout(reader, readSliceTimeoutMs);
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const { frames, remaining: leftover } = extractSseDataFrames(buffer);
+      buffer = leftover;
+      for (const frame of frames) {
+        if (!frame || frame === "[DONE]") continue;
+        let eventPayload;
+        try {
+          eventPayload = JSON.parse(frame);
+        } catch {
+          continue;
+        }
+        responseId = responseId || String(eventPayload.response_id || eventPayload.id || "");
+        if (eventPayload?.type === "response.output_text.delta" && typeof eventPayload.delta === "string") {
+          streamedText += eventPayload.delta;
+          if (typeof onTextDelta === "function" && eventPayload.delta.trim()) {
+            onTextDelta(eventPayload.delta);
+          }
+        }
+        if (eventPayload?.type === "response.completed" && eventPayload.response) {
+          completedResponse = eventPayload.response;
         }
       }
-      if (eventPayload?.type === "response.completed" && eventPayload.response) {
-        completedResponse = eventPayload.response;
-      }
     }
+  } catch (error) {
+    try {
+      await reader.cancel();
+    } catch {
+      // Ignore stream cancel errors.
+    }
+    throw error;
   }
 
   const payload = completedResponse || { id: responseId, output_text: streamedText };
@@ -362,7 +408,7 @@ async function callCodex({
         }
 
         const { payload, text, parsed } = shouldStream
-          ? await readOpenAiStream(response, onTextDelta)
+          ? await readOpenAiStream(response, onTextDelta, timeoutMs)
           : await (() => {
               return response.json().then((data) => ({
                 payload: data,
@@ -437,6 +483,7 @@ module.exports = {
     parseModelJson,
     extractOutputText,
     extractOutputParsed,
+    readWithTimeout,
     resolveCodexModel,
     resolveCodexModelCandidates,
     resolveOpenAiErrorCode,

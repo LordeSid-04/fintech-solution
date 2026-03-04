@@ -75,6 +75,16 @@ test("resolveCodexModelCandidates includes fallback chain without duplicates", (
   }
 });
 
+test("readWithTimeout throws timeout on stalled stream read", async () => {
+  const reader = {
+    read: () => new Promise(() => {}),
+  };
+  await assert.rejects(
+    () => __test.readWithTimeout(reader, 20),
+    (error) => error && error.code === "TIMEOUT"
+  );
+});
+
 test("callCodex falls back to next model when primary times out", async () => {
   const previous = {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
