@@ -326,7 +326,11 @@ async function executePipeline({
     message: "Planning the architecture and file strategy...",
   });
 
-  const architect = await runArchitectAgent({ userRequest: prompt, currentFiles: projectFiles });
+  const architect = await runArchitectAgent({
+    userRequest: prompt,
+    currentFiles: projectFiles,
+    confidenceMode,
+  });
   artifacts.plan = architect.artifact;
   proofs.push({ step: "architect", proof: architect.proof });
   emit({
@@ -589,10 +593,12 @@ async function executePipeline({
   const verifierPromise = runVerifierAgent({
     userRequest: prompt,
     diffArtifact: developer.artifact,
+    confidenceMode,
   });
   const operatorPromise = runOperatorAgent({
     userRequest: prompt,
     diffArtifact: developer.artifact,
+    confidenceMode,
   });
 
   const verifier = await verifierPromise;

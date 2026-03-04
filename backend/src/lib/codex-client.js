@@ -261,7 +261,8 @@ async function readOpenAiStream(response, onTextDelta, timeoutMs) {
   let completedResponse = null;
   let responseId = "";
   const streamStartedAt = Date.now();
-  const maxStreamDurationMs = Math.max(Number(timeoutMs) || 0, 12000);
+  const hasHardStreamTimeout = Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0;
+  const maxStreamDurationMs = hasHardStreamTimeout ? Math.max(Number(timeoutMs), 12000) : Number.POSITIVE_INFINITY;
 
   try {
     while (true) {
@@ -274,7 +275,9 @@ async function readOpenAiStream(response, onTextDelta, timeoutMs) {
           408
         );
       }
-      const readSliceTimeoutMs = Math.max(1000, Math.min(remaining, 15000));
+      const readSliceTimeoutMs = Number.isFinite(remaining)
+        ? Math.max(1000, Math.min(remaining, 15000))
+        : 0;
       const { done, value } = await readWithTimeout(reader, readSliceTimeoutMs);
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
@@ -340,8 +343,18 @@ async function callCodex({
     );
   }
 
-  const timeoutMs = Number(timeoutMsOverride || process.env.OPENAI_TIMEOUT_MS || 30000);
-  const maxAttempts = Number(maxAttemptsOverride || process.env.OPENAI_MAX_ATTEMPTS || 2);
+  const timeoutMsSource =
+    timeoutMsOverride !== undefined && timeoutMsOverride !== null
+      ? timeoutMsOverride
+      : process.env.OPENAI_TIMEOUT_MS;
+  const parsedTimeoutMs = Number(timeoutMsSource);
+  const timeoutMs = Number.isFinite(parsedTimeoutMs) ? parsedTimeoutMs : 30000;
+  const maxAttemptsSource =
+    maxAttemptsOverride !== undefined && maxAttemptsOverride !== null
+      ? maxAttemptsOverride
+      : process.env.OPENAI_MAX_ATTEMPTS;
+  const parsedMaxAttempts = Number(maxAttemptsSource);
+  const maxAttempts = Number.isFinite(parsedMaxAttempts) && parsedMaxAttempts > 0 ? parsedMaxAttempts : 2;
   let lastError = null;
 
   for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
@@ -353,7 +366,8 @@ async function callCodex({
       attempt += 1;
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const useAbortTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0;
+        const timeout = useAbortTimeout ? setTimeout(() => controller.abort(), timeoutMs) : null;
 
         let response;
         try {
@@ -375,7 +389,7 @@ async function callCodex({
             ),
           });
         } finally {
-          clearTimeout(timeout);
+          if (timeout) clearTimeout(timeout);
         }
 
         if (!response.ok) {

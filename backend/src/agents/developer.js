@@ -1593,14 +1593,19 @@ async function runDeveloperAgent({
   confidenceMode = "pair",
   onModelDelta,
 }) {
+  const noAutopilotTimeouts = confidenceMode === "autopilot";
   const codeEditMode = looksLikeCodeEditPrompt(userRequest, currentFiles);
   const buildMode = !codeEditMode && isBuildPrompt(userRequest);
   const autopilotBuildMode = confidenceMode === "autopilot" && buildMode;
-  const developerStageBudgetMs = parsePositiveInt(
+  const developerStageBudgetMs = noAutopilotTimeouts
+    ? Number.POSITIVE_INFINITY
+    : parsePositiveInt(
     process.env.DEVELOPER_STAGE_BUDGET_MS,
     autopilotBuildMode ? 90000 : 60000
   );
-  const developerModelTimeoutMs = parsePositiveInt(
+  const developerModelTimeoutMs = noAutopilotTimeouts
+    ? 0
+    : parsePositiveInt(
     process.env.DEVELOPER_MODEL_TIMEOUT_MS,
     autopilotBuildMode ? 45000 : 30000
   );
@@ -1610,21 +1615,26 @@ async function runDeveloperAgent({
   );
   const stageStartedAt = Date.now();
   const remainingBudgetMs = () => developerStageBudgetMs - (Date.now() - stageStartedAt);
-  const budgetExceeded = () => remainingBudgetMs() <= 0;
+  const budgetExceeded = () =>
+    Number.isFinite(developerStageBudgetMs) && remainingBudgetMs() <= 0;
   const callDeveloperCodex = async ({ systemPrompt, userPrompt, responseSchema }) => {
     const remaining = remainingBudgetMs();
-    if (remaining <= 0) {
+    if (Number.isFinite(developerStageBudgetMs) && remaining <= 0) {
       const err = new Error("DEVELOPER_STAGE_BUDGET_EXCEEDED");
       err.code = "DEVELOPER_STAGE_BUDGET_EXCEEDED";
       throw err;
     }
+    const timeoutOverride =
+      developerModelTimeoutMs <= 0
+        ? 0
+        : Math.max(8000, Math.min(developerModelTimeoutMs, Number.isFinite(remaining) ? remaining : developerModelTimeoutMs));
     return callCodex({
       agentRole: "DEVELOPER",
       systemPrompt,
       userPrompt,
       responseSchema,
       onTextDelta: onModelDelta,
-      timeoutMsOverride: Math.max(8000, Math.min(developerModelTimeoutMs, remaining)),
+      timeoutMsOverride: timeoutOverride,
       maxAttemptsOverride: developerModelMaxAttempts,
     });
   };
@@ -1750,7 +1760,9 @@ Code edit enforcement:
       : process.env.DEVELOPER_MAX_REFINEMENT_PASSES_STANDARD,
     autopilotBuildMode ? 2 : 2
   );
-  const refinementBudgetMs = parsePositiveInt(
+  const refinementBudgetMs = noAutopilotTimeouts
+    ? Number.POSITIVE_INFINITY
+    : parsePositiveInt(
     process.env.DEVELOPER_REFINEMENT_BUDGET_MS,
     autopilotBuildMode ? 55000 : 30000
   );
@@ -1760,7 +1772,7 @@ Code edit enforcement:
     if (budgetExceeded()) {
       break;
     }
-    if (Date.now() - refinementStartedAt > refinementBudgetMs) {
+    if (Number.isFinite(refinementBudgetMs) && Date.now() - refinementStartedAt > refinementBudgetMs) {
       break;
     }
     const qualityGateFailed =
