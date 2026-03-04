@@ -272,7 +272,15 @@ async function readOpenAiStream(response, onTextDelta) {
   };
 }
 
-async function callCodex({ agentRole, systemPrompt, userPrompt, responseSchema, onTextDelta }) {
+async function callCodex({
+  agentRole,
+  systemPrompt,
+  userPrompt,
+  responseSchema,
+  onTextDelta,
+  timeoutMsOverride,
+  maxAttemptsOverride,
+}) {
   const shouldStream = typeof onTextDelta === "function";
   const now = new Date().toISOString();
   const models = resolveCodexModelCandidates();
@@ -286,8 +294,8 @@ async function callCodex({ agentRole, systemPrompt, userPrompt, responseSchema, 
     );
   }
 
-  const timeoutMs = Number(process.env.OPENAI_TIMEOUT_MS || 30000);
-  const maxAttempts = 2;
+  const timeoutMs = Number(timeoutMsOverride || process.env.OPENAI_TIMEOUT_MS || 30000);
+  const maxAttempts = Number(maxAttemptsOverride || process.env.OPENAI_MAX_ATTEMPTS || 2);
   let lastError = null;
 
   for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {

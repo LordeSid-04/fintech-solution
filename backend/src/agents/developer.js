@@ -1237,6 +1237,16 @@ function parsePositiveInt(value, fallback) {
   return parsed;
 }
 
+function buildDeterministicDeveloperProof() {
+  return {
+    provider: "policy-engine",
+    model: "deterministic-recovery",
+    responseId: `developer-recovery-${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    agentRole: "DEVELOPER",
+  };
+}
+
 function scoreArtifactQualityByIntent(prompt, artifact, intent) {
   if (intent === "website") {
     return scoreWebsiteArtifactQuality(prompt, artifact);
@@ -1399,6 +1409,39 @@ async function runDeveloperAgent({
 }) {
   const codeEditMode = looksLikeCodeEditPrompt(userRequest, currentFiles);
   const buildMode = !codeEditMode && isBuildPrompt(userRequest);
+  const autopilotBuildMode = confidenceMode === "autopilot" && buildMode;
+  const developerStageBudgetMs = parsePositiveInt(
+    process.env.DEVELOPER_STAGE_BUDGET_MS,
+    autopilotBuildMode ? 90000 : 60000
+  );
+  const developerModelTimeoutMs = parsePositiveInt(
+    process.env.DEVELOPER_MODEL_TIMEOUT_MS,
+    autopilotBuildMode ? 20000 : 30000
+  );
+  const developerModelMaxAttempts = parsePositiveInt(
+    process.env.DEVELOPER_MODEL_MAX_ATTEMPTS,
+    autopilotBuildMode ? 1 : 2
+  );
+  const stageStartedAt = Date.now();
+  const remainingBudgetMs = () => developerStageBudgetMs - (Date.now() - stageStartedAt);
+  const budgetExceeded = () => remainingBudgetMs() <= 0;
+  const callDeveloperCodex = async ({ systemPrompt, userPrompt, responseSchema }) => {
+    const remaining = remainingBudgetMs();
+    if (remaining <= 0) {
+      const err = new Error("DEVELOPER_STAGE_BUDGET_EXCEEDED");
+      err.code = "DEVELOPER_STAGE_BUDGET_EXCEEDED";
+      throw err;
+    }
+    return callCodex({
+      agentRole: "DEVELOPER",
+      systemPrompt,
+      userPrompt,
+      responseSchema,
+      onTextDelta: onModelDelta,
+      timeoutMsOverride: Math.max(8000, Math.min(developerModelTimeoutMs, remaining)),
+      maxAttemptsOverride: developerModelMaxAttempts,
+    });
+  };
   const inlineBlock = extractInlineCodeBlock(userRequest);
   const inlineSnippet = {
     language: inlineBlock?.language || "",
@@ -1417,12 +1460,10 @@ async function runDeveloperAgent({
       "Return strict JSON only with keys: assistantReply, rationale.",
     ].join(" ");
     const knowledgeUserPrompt = `Question:\n${userRequest}\n\nReturn a concise but complete answer and keep it tightly scoped to the question intent.`;
-    let knowledgeCodex = await callCodex({
-      agentRole: "DEVELOPER",
+    let knowledgeCodex = await callDeveloperCodex({
       systemPrompt: knowledgeSystemPrompt,
       userPrompt: knowledgeUserPrompt,
       responseSchema: KNOWLEDGE_RESPONSE_SCHEMA,
-      onTextDelta: onModelDelta,
     });
     let knowledgeArtifact = normalizeKnowledgeArtifact(
       knowledgeCodex.parsed || { assistantReply: knowledgeCodex.text, rationale: "" },
@@ -1435,7 +1476,6 @@ async function runDeveloperAgent({
       modelText: knowledgeCodex.text,
     };
   }
-  const autopilotBuildMode = confidenceMode === "autopilot" && buildMode;
   const buildIntent = detectBuildIntent(userRequest);
   const grounding = buildPromptGroundingTerms(userRequest);
   const websiteBrief = buildWebsiteBrief(userRequest);
@@ -1478,26 +1518,25 @@ async function runDeveloperAgent({
     null,
     2
   )}\n\nQuality requirements for build prompts:\n- Create high-quality, relevant content tied to user intent.\n- Use company-specific copy when company name is provided.\n- Include coherent sections (${websiteBrief.sections.join(", ")}).\n- Avoid placeholder/generic portfolio copy unless explicitly requested.\n- Ensure generatedFiles includes enough structure to be usable immediately.\n\nGenerate a complete implementation. For build prompts, create all key starter files, not just one file.`;
-  let codex = await callCodex({
-    agentRole: "DEVELOPER",
-    systemPrompt,
-    userPrompt,
-    responseSchema: DEVELOPER_RESPONSE_SCHEMA,
-    onTextDelta: onModelDelta,
-  });
+  try {
+    let codex = await callDeveloperCodex({
+      systemPrompt,
+      userPrompt,
+      responseSchema: DEVELOPER_RESPONSE_SCHEMA,
+    });
 
-  const fallback = {
-    unifiedDiff: "",
-    filesTouched: [],
-    rationale: "",
-    generatedFiles: {},
-    previewHtml: "",
-    assistantReply: "",
-  };
-  let normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest, codex.text);
+    const fallback = {
+      unifiedDiff: "",
+      filesTouched: [],
+      rationale: "",
+      generatedFiles: {},
+      previewHtml: "",
+      assistantReply: "",
+    };
+    let normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest, codex.text);
 
-  if (codeEditMode && Object.keys(normalizedArtifact.generatedFiles).length === 0) {
-    const focusedPrompt = `${userPrompt}
+    if (codeEditMode && Object.keys(normalizedArtifact.generatedFiles).length === 0) {
+      const focusedPrompt = `${userPrompt}
 
 Code edit enforcement:
 - This request is a code-fix/edit, not a generic answer.
@@ -1505,15 +1544,13 @@ Code edit enforcement:
 - Preserve unrelated code and only apply targeted fixes.
 - Ensure filesTouched includes each updated file path.
 - If only inline snippet is provided, write the corrected full file content to generatedFiles["${inferredInlinePath || "snippet.py"}"].`;
-    codex = await callCodex({
-      agentRole: "DEVELOPER",
-      systemPrompt,
-      userPrompt: focusedPrompt,
-      responseSchema: DEVELOPER_RESPONSE_SCHEMA,
-      onTextDelta: onModelDelta,
-    });
-    normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest, codex.text);
-  }
+      codex = await callDeveloperCodex({
+        systemPrompt,
+        userPrompt: focusedPrompt,
+        responseSchema: DEVELOPER_RESPONSE_SCHEMA,
+      });
+      normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest, codex.text);
+    }
 
   const maxRefinementPasses = parsePositiveInt(
     autopilotBuildMode
@@ -1528,6 +1565,9 @@ Code edit enforcement:
   const refinementStartedAt = Date.now();
   let pass = 0;
   while (buildMode && pass < maxRefinementPasses) {
+    if (budgetExceeded()) {
+      break;
+    }
     if (Date.now() - refinementStartedAt > refinementBudgetMs) {
       break;
     }
@@ -1548,12 +1588,10 @@ Code edit enforcement:
     }: your previous output was not sufficiently production-grade for this prompt.\nRequired domain terms from prompt: ${
       grounding.domainTerms.join(", ") || "(none)"
     }\nStrict requirements:\n- deeply align with prompt domain and wording\n- avoid portfolio templates unless explicitly requested\n- deliver polished structure, meaningful copy, and responsive layout\n- include all essential files for a runnable starter\n- generate publication-quality UI hierarchy and spacing\n- keep assistantReply + rationale concise but specific to generated output`;
-    codex = await callCodex({
-      agentRole: "DEVELOPER",
+    codex = await callDeveloperCodex({
       systemPrompt,
       userPrompt: correctionPrompt,
       responseSchema: DEVELOPER_RESPONSE_SCHEMA,
-      onTextDelta: onModelDelta,
     });
     normalizedArtifact = normalizeDeveloperArtifact(codex.parsed || fallback, userRequest, codex.text);
     pass += 1;
@@ -1575,11 +1613,30 @@ Code edit enforcement:
     }
   }
 
-  return {
-    artifact: normalizedArtifact,
-    proof: codex.proof,
-    modelText: codex.text,
-  };
+    return {
+      artifact: normalizedArtifact,
+      proof: codex.proof,
+      modelText: codex.text,
+    };
+  } catch (error) {
+    if (autopilotBuildMode) {
+      const message = String(error?.message || "");
+      const timeoutLike =
+        error?.code === "DEVELOPER_STAGE_BUDGET_EXCEEDED" ||
+        error?.code === "TIMEOUT" ||
+        /timed out|timeout|aborted/i.test(message);
+      if (timeoutLike) {
+        const recovered = buildAutopilotRecoveryArtifact(userRequest, buildIntent);
+        recovered.rationale = `${recovered.rationale} Recovery reason: ${message || "autopilot timeout/budget exceeded"}.`;
+        return {
+          artifact: recovered,
+          proof: buildDeterministicDeveloperProof(),
+          modelText: "",
+        };
+      }
+    }
+    throw error;
+  }
 }
 
 module.exports = {
@@ -1598,6 +1655,7 @@ module.exports = {
     scoreWebsiteArtifactQuality,
     scoreArtifactQualityByIntent,
     buildAutopilotRecoveryArtifact,
+    buildDeterministicDeveloperProof,
     buildWebsiteBrief,
     hasRequestedWebsiteSectionCoverage,
     deriveBrandLabel,
