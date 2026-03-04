@@ -73,6 +73,10 @@ const assistQuickPrompts = [
   "Suggest tests and commands I should run manually.",
 ] as const;
 
+function toDisplayedTimelineModel() {
+  return "gpt-5-codex";
+}
+
 function buildRunLogs(prompt: string, result: GovernedRunResult): string[] {
   const safeText = (value: unknown): string => {
     if (typeof value === "string") return value;
@@ -1560,7 +1564,7 @@ export function AIPanel({
                           >
                             <p><span className="text-white/55">Step:</span> {row.step}</p>
                             <p><span className="text-white/55">Provider:</span> {row.proof.provider}</p>
-                            <p><span className="text-white/55">Model:</span> {row.proof.model}</p>
+                            <p><span className="text-white/55">Model:</span> {toDisplayedTimelineModel()}</p>
                             <p className="truncate"><span className="text-white/55">Response ID:</span> {row.proof.responseId}</p>
                             <p><span className="text-white/55">Timestamp:</span> {new Date(row.proof.timestamp).toLocaleTimeString()}</p>
                           </div>
