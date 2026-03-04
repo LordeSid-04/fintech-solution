@@ -260,6 +260,7 @@ async function readOpenAiStream(response, onTextDelta, timeoutMs) {
   let streamedText = "";
   let completedResponse = null;
   let responseId = "";
+  let sawResponseCompleted = false;
   const streamStartedAt = Date.now();
   const hasHardStreamTimeout = Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0;
   const maxStreamDurationMs = hasHardStreamTimeout ? Math.max(Number(timeoutMs), 12000) : Number.POSITIVE_INFINITY;
@@ -300,7 +301,12 @@ async function readOpenAiStream(response, onTextDelta, timeoutMs) {
         }
         if (eventPayload?.type === "response.completed" && eventPayload.response) {
           completedResponse = eventPayload.response;
+          sawResponseCompleted = true;
+          break;
         }
+      }
+      if (sawResponseCompleted) {
+        break;
       }
     }
   } catch (error) {
@@ -310,6 +316,13 @@ async function readOpenAiStream(response, onTextDelta, timeoutMs) {
       // Ignore stream cancel errors.
     }
     throw error;
+  }
+  if (sawResponseCompleted) {
+    try {
+      await reader.cancel();
+    } catch {
+      // Ignore stream cancel errors.
+    }
   }
 
   const payload = completedResponse || { id: responseId, output_text: streamedText };

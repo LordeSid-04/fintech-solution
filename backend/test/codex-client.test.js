@@ -150,3 +150,58 @@ test("callCodex falls back to next model when primary times out", async () => {
     global.fetch = previousFetch;
   }
 });
+
+test("callCodex streaming returns on response.completed even if stream does not end", async () => {
+  const previous = {
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    OPENAI_CODEX_MODEL: process.env.OPENAI_CODEX_MODEL,
+    OPENAI_TIMEOUT_MS: process.env.OPENAI_TIMEOUT_MS,
+  };
+  const previousFetch = global.fetch;
+  process.env.OPENAI_API_KEY = "test-key";
+  process.env.OPENAI_CODEX_MODEL = "gpt-5-codex";
+  process.env.OPENAI_TIMEOUT_MS = "0";
+
+  const encoder = new TextEncoder();
+  const completionFrame =
+    'data: {"type":"response.completed","response":{"id":"resp-stream","output_text":"{\\"ok\\":true}"}}\n\n';
+  const reader = {
+    readCalls: 0,
+    async read() {
+      this.readCalls += 1;
+      if (this.readCalls === 1) {
+        return { done: false, value: encoder.encode(completionFrame) };
+      }
+      return new Promise(() => {});
+    },
+    async cancel() {
+      return undefined;
+    },
+  };
+
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    body: {
+      getReader() {
+        return reader;
+      },
+    },
+  });
+
+  try {
+    const result = await callCodex({
+      agentRole: "DEVELOPER",
+      systemPrompt: "system",
+      userPrompt: "user",
+      onTextDelta: () => {},
+    });
+    assert.equal(result.proof.responseId, "resp-stream");
+    assert.deepEqual(result.parsed, { ok: true });
+  } finally {
+    process.env.OPENAI_API_KEY = previous.OPENAI_API_KEY;
+    process.env.OPENAI_CODEX_MODEL = previous.OPENAI_CODEX_MODEL;
+    process.env.OPENAI_TIMEOUT_MS = previous.OPENAI_TIMEOUT_MS;
+    global.fetch = previousFetch;
+  }
+});
