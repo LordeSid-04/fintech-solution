@@ -123,6 +123,18 @@ function appendStreamLines(previous: string[], additions: string[]): string[] {
   return [...previous, ...additions].slice(-160);
 }
 
+function hasSuggestionContent(summary: {
+  assistantReply: string;
+  rationale: string;
+  streamLines: string[];
+}): boolean {
+  return Boolean(
+    summary.assistantReply.trim() ||
+      summary.rationale.trim() ||
+      summary.streamLines.some((line) => line.trim().length > 0)
+  );
+}
+
 function toDisplayRiskLabel(
   riskTier?: "LOW" | "MED" | "HIGH" | "CRITICAL"
 ): "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" {
@@ -493,6 +505,17 @@ export function AIPanel({
                 event.content,
               ],
             });
+            if (
+              mode !== "autopilot" &&
+              event.agentRole === "DEVELOPER" &&
+              event.content.trim().length
+            ) {
+              setResponseSummary((prev) => ({
+                ...prev,
+                assistantReply: prev.assistantReply.trim() ? prev.assistantReply : event.content,
+                streamLines: appendStreamLines(prev.streamLines, [event.content]),
+              }));
+            }
             maybeAutoSwitchToResponse();
             if (event.proof) {
               streamProofs.push({
@@ -582,8 +605,8 @@ export function AIPanel({
       }
       setResponseSummary((prev) => ({
         promptText: prev.promptText || promptInput,
-        assistantReply: runResult.artifacts?.diff?.assistantReply ?? "",
-        rationale: runResult.artifacts?.diff?.rationale ?? "",
+        assistantReply: runResult.artifacts?.diff?.assistantReply ?? prev.assistantReply,
+        rationale: runResult.artifacts?.diff?.rationale ?? prev.rationale,
         generatedFiles: {
           ...prev.generatedFiles,
           ...(runResult.artifacts?.diff?.generatedFiles ?? {}),
@@ -678,7 +701,9 @@ export function AIPanel({
           assistantReply: runResult.artifacts?.diff?.assistantReply ?? "",
           rationale: runResult.artifacts?.diff?.rationale ?? "",
           generatedFiles: runResult.artifacts?.diff?.generatedFiles ?? {},
-          streamLines: [],
+          streamLines: runResult.artifacts?.diff?.assistantReply
+            ? [runResult.artifacts.diff.assistantReply]
+            : [],
           highlightedSnippet: "",
           matchedTerms: [],
           contentFlags: runResult.artifacts?.diff?.contentFlags ?? [],
@@ -763,13 +788,10 @@ export function AIPanel({
 
   const pairPrimaryPath = useMemo(() => Object.keys(pairPendingFiles)[0] ?? "", [pairPendingFiles]);
   const pairPrimaryCode = pairPrimaryPath ? pairPendingFiles[pairPrimaryPath] ?? "" : "";
-  const showSuggestionsBox = mode === "pair"
-    ? Boolean(pairPrimaryCode || responseSummary.assistantReply || responseSummary.rationale)
-    : Boolean(
-        responseSummary.assistantReply ||
-          responseSummary.rationale ||
-          responseSummary.streamLines.length
-      );
+  const showSuggestionsBox =
+    mode === "pair"
+      ? Boolean(pairPrimaryCode || hasSuggestionContent(responseSummary))
+      : hasSuggestionContent(responseSummary);
   const assistantContentFlags = responseSummary.contentFlags.filter(
     (item) => item.target === "assistantReply"
   );
@@ -1246,6 +1268,13 @@ export function AIPanel({
                                       {renderInlineRiskText(responseSummary.rationale, rationaleContentFlags)}
                                     </p>
                                   ) : null}
+                                  {!responseSummary.assistantReply &&
+                                  !responseSummary.rationale &&
+                                  responseSummary.streamLines.length ? (
+                                    <p className="whitespace-pre-wrap text-white/75">
+                                      {responseSummary.streamLines[responseSummary.streamLines.length - 1]}
+                                    </p>
+                                  ) : null}
                                   <p className="mt-1 text-[10px] text-white/55">
                                     No direct file patch was produced for this prompt. Try asking for an explicit code edit.
                                   </p>
@@ -1322,6 +1351,13 @@ export function AIPanel({
                               {responseSummary.rationale ? (
                                 <p className="mt-1 whitespace-pre-wrap text-white/75">
                                   {renderInlineRiskText(responseSummary.rationale, rationaleContentFlags)}
+                                </p>
+                              ) : null}
+                              {!responseSummary.assistantReply &&
+                              !responseSummary.rationale &&
+                              responseSummary.streamLines.length ? (
+                                <p className="mt-1 whitespace-pre-wrap text-white/75">
+                                  {responseSummary.streamLines[responseSummary.streamLines.length - 1]}
                                 </p>
                               ) : null}
                               {responseSummary.highlightedSnippet ? (
