@@ -361,6 +361,15 @@ export function AIPanel({
     }
   }, []);
 
+  const isProgressEligibleLogLine = useCallback((line: string) => {
+    const normalized = String(line || "").trim().toLowerCase();
+    if (!normalized) return false;
+    if (normalized.startsWith("[prompt]") || normalized.startsWith("[governance]")) {
+      return false;
+    }
+    return /^\[(system|architect|developer|verifier|operator|error)\]/i.test(normalized);
+  }, []);
+
   const pushResponseProgressFromLogs = useCallback(() => {
     const logs = runLogsRef.current;
     if (!logs.length) return;
@@ -368,8 +377,8 @@ export function AIPanel({
     const latestMeaningful =
       [...unread]
         .reverse()
-        .find((line) => line.trim() && !line.startsWith("[prompt]")) ||
-      [...logs].reverse().find((line) => line.trim());
+        .find((line) => isProgressEligibleLogLine(line)) ||
+      [...logs].reverse().find((line) => isProgressEligibleLogLine(line));
     responseProgressCursorRef.current = logs.length;
     if (!latestMeaningful) return;
     setResponseSummary((prev) => ({
@@ -378,7 +387,7 @@ export function AIPanel({
         `[system] Progress update: ${latestMeaningful}`,
       ]),
     }));
-  }, []);
+  }, [isProgressEligibleLogLine]);
 
   const startResponseProgressUpdates = useCallback(() => {
     stopResponseProgressUpdates();
